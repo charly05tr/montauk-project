@@ -3,14 +3,26 @@ import { getRenderer } from './Renderer.js'
 import { setHelpTextVisible } from '../ui/Overlay/index.js'
 
 let camera
-let minCameraY          = -5.0
-let maxCameraY          =  5.0
-let startPosition       = new THREE.Vector3(0, 0, 0)
-let startLookTarget     = new THREE.Vector3(0, 0, -1)
+let minCameraY = -5.0
+let maxCameraY = 5.0
+let startPosition = new THREE.Vector3(0, 0, 0)
+let startLookTarget = new THREE.Vector3(0, 0, -1)
 let roomCollisionBounds = null
 
 const keys = {}
-let yaw = 0, pitch = 0, mouseLocked = false
+let mouseLocked = false
+
+// Smooth rotation variables (Cinematic Mouse Look)
+let targetYaw = 0, currentYaw = 0
+let targetPitch = 0, currentPitch = 0
+
+// Momentum and physics variables
+const velocity = new THREE.Vector3()
+const targetVelocity = new THREE.Vector3()
+
+// Head bobbing variables
+let bobbingAccumulator = 0
+let bobbingOffset = 0
 
 export function initCamera() {
   camera = new THREE.PerspectiveCamera(
@@ -24,10 +36,18 @@ export function initCamera() {
   window.addEventListener('keydown', (e) => {
     keys[e.code] = true
     if (e.code === 'KeyR') {
+      // Reinicio suave
       camera.position.copy(startPosition)
-      camera.lookAt(startLookTarget)
-      pitch = camera.rotation.x
-      yaw   = camera.rotation.y
+
+      const dummyCamera = new THREE.PerspectiveCamera()
+      dummyCamera.position.copy(startPosition)
+      dummyCamera.lookAt(startLookTarget)
+
+      targetPitch = dummyCamera.rotation.x
+      targetYaw = dummyCamera.rotation.y
+      currentPitch = targetPitch
+      currentYaw = targetYaw
+      velocity.set(0, 0, 0)
     }
   })
 
@@ -45,12 +65,11 @@ export function initCamera() {
 
   document.addEventListener('mousemove', (e) => {
     if (!mouseLocked) return
-    yaw   -= e.movementX * 0.001
-    pitch -= e.movementY * 0.001
-    pitch  = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch))
-    camera.rotation.order = 'YXZ'
-    camera.rotation.y = yaw
-    camera.rotation.x = pitch
+    // Sensibilidad del ratón
+    targetYaw -= e.movementX * 0.0015
+    targetPitch -= e.movementY * 0.0015
+    // Limitar que no dé una vuelta de campana la cabeza
+    targetPitch = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, targetPitch))
   })
 
   window.addEventListener('resize', () => {
@@ -78,33 +97,80 @@ function tryMoveCamera(dx, dz) {
   clampCameraToRoom(camera.position)
 }
 
-const _forward   = new THREE.Vector3()
-const _right     = new THREE.Vector3()
+const _forward = new THREE.Vector3()
+const _right = new THREE.Vector3()
 const _direction = new THREE.Vector3()
 
 export function moveCamera(delta) {
   if (!camera) return
-  const step = 0.32 * delta
 
+  // Evitar dts enormes si la pestaña pierde foco
+  const dt = Math.min(delta, 0.1)
+
+  // 1. Interpolar la rotación (Cinematic Mouse Look / Lerp)
+  // factor 25 = respuesta rápida pero suave (un valor más bajo = más 'flotante')
+  const rotLerpFactor = 1.0 - Math.exp(-dt * 25.0)
+  currentYaw = THREE.MathUtils.lerp(currentYaw, targetYaw, rotLerpFactor)
+  currentPitch = THREE.MathUtils.lerp(currentPitch, targetPitch, rotLerpFactor)
+
+  camera.rotation.order = 'YXZ'
+  camera.rotation.y = currentYaw
+  camera.rotation.x = currentPitch
+
+  // 2. Calcular el input de dirección
   _direction.set(0, 0, 0)
   if (keys['KeyW']) _direction.z -= 1
   if (keys['KeyS']) _direction.z += 1
   if (keys['KeyA']) _direction.x -= 1
   if (keys['KeyD']) _direction.x += 1
-  if (keys['Space'])      _direction.y += 1
+  if (keys['Space']) _direction.y += 1
   if (keys['ControlLeft'] || keys['ControlRight'] || keys['ShiftLeft'] || keys['ShiftRight']) _direction.y -= 1
-  _direction.normalize()
 
+  if (_direction.lengthSq() > 0) _direction.normalize()
+
+  // 3. Orientar la dirección según hacia dónde mira la cámara
   camera.getWorldDirection(_forward)
   _forward.y = 0; _forward.normalize()
   _right.crossVectors(_forward, camera.up).normalize()
 
-  tryMoveCamera(-_direction.z * _forward.x * step, -_direction.z * _forward.z * step)
-  tryMoveCamera( _direction.x * _right.x   * step,  _direction.x * _right.z   * step)
+  // 4. Calcular velocidad objetivo
+  const baseSpeed = 0.1
+  const verticalSpeed = 0.5
 
-  camera.position.y += _direction.y * step * 0.55
-  camera.position.y  = Math.max(minCameraY, Math.min(maxCameraY, camera.position.y))
+  targetVelocity.set(0, 0, 0)
+  targetVelocity.addScaledVector(_forward, -_direction.z * baseSpeed)
+  targetVelocity.addScaledVector(_right, _direction.x * baseSpeed)
+  targetVelocity.y = _direction.y * verticalSpeed
+
+  // 5. Aplicar Inercia / Momentum
+  const moveLerpFactor = 1.0 - Math.exp(-dt * 10.0)
+  velocity.lerp(targetVelocity, moveLerpFactor)
+
+  // 6. Restar el head bobbing del frame anterior
+  camera.position.y -= bobbingOffset
+
+  // 7. Mover al personaje con la física
+  tryMoveCamera(velocity.x * dt, velocity.z * dt)
+  camera.position.y += velocity.y * dt
+
+  camera.position.y = Math.max(minCameraY, Math.min(maxCameraY, camera.position.y))
   clampCameraToRoom(camera.position)
+
+  // 8. Calcular nuevo Head Bobbing simple (solo Y)
+  const horizontalSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z)
+
+  if (horizontalSpeed > 0.1) {
+    bobbingAccumulator += horizontalSpeed * dt * 10.0
+  }
+
+  const bobAmplitude = 0.5 // Amplitud sutil
+  const targetBobbing = horizontalSpeed > 0.1 ? Math.sin(bobbingAccumulator) * bobAmplitude : 0
+
+  // Suavizar la vuelta a la normalidad cuando se detiene
+  bobbingOffset = THREE.MathUtils.lerp(bobbingOffset, targetBobbing, dt * 10.0)
+
+  // 9. Aplicar el bobbing actualizado
+  camera.position.y += bobbingOffset
 }
 
 export function applySceneCamera(roomBox, roomSize, roomCenter, heightFactor = 0.36) {
@@ -117,8 +183,13 @@ export function applySceneCamera(roomBox, roomSize, roomCenter, heightFactor = 0
   )
   startPosition.set(roomCenter.x, roomBox.min.y + roomSize.y * heightFactor, roomCenter.z)
   startLookTarget.set(roomCenter.x, startPosition.y, roomCenter.z - 1)
+
   camera.position.copy(startPosition)
   camera.lookAt(startLookTarget)
-  pitch = camera.rotation.x
-  yaw   = camera.rotation.y
+
+  targetPitch = camera.rotation.x
+  targetYaw = camera.rotation.y
+  currentPitch = targetPitch
+  currentYaw = targetYaw
+  velocity.set(0, 0, 0)
 }

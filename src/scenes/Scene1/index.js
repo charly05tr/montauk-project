@@ -10,12 +10,14 @@ export const xmasLights = []
 let redLight, orangeLight
 
 export function loadRoom(scene, physicsWorld, player) {
-  redLight = new THREE.PointLight(0xff2a12, 2.2, 22, 1.7)
-  redLight.position.set(-12, 8, 4)
+  // Luces de la sala reducidas en intensidad a nivel microscópico para ajustarse a la escala minúscula (0.04)
+  // y evitar sobreexposición con decay: 2
+  redLight = new THREE.PointLight(0xff2a12, 0.005, 2, 2)
+  redLight.position.set(-0.12, 0.2, 0.04)
   scene.add(redLight)
 
-  orangeLight = new THREE.PointLight(0xff6a18, 1.7, 20, 1.7)
-  orangeLight.position.set(10, 6, -10)
+  orangeLight = new THREE.PointLight(0xff6a18, 0.005, 2, 2)
+  orangeLight.position.set(0.1, 0.15, -0.1)
   scene.add(orangeLight)
 
   const gltfLoader = new GLTFLoader(loadingManager)
@@ -80,7 +82,7 @@ export function loadRoom(scene, physicsWorld, player) {
 
       setMainSceneReady()
 
-      setHelpText('Click para entrar | WASD moverte | Espacio saltar | Esc salir')
+      setHelpText('Click para entrar | WASD moverte | Esc salir')
     },
     undefined,
     (error) => {

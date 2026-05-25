@@ -3,9 +3,16 @@ import { initLoadingScreen } from './ui/Loading/index.js'
 import { initOverlay } from './ui/Overlay/index.js'
 import { initRenderer } from './core/Renderer.js'
 import { initGlobalLights, updateGlobalLights } from './core/Lights.js'
-import { initSceneManager, getScene, updateCurrentScene } from './core/SceneManager.js'
+import { sceneManager } from './core/SceneManager.js'
 import { PhysicsWorld } from './physics/PhysicsWorld.js'
 import { Player } from './core/Player.js'
+
+// --- POST-PROCESSING IMPORTS ---
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { FilmPass } from 'three/examples/jsm/postprocessing/FilmPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
 
 const app = document.querySelector('#app')
 
@@ -16,24 +23,41 @@ initOverlay()
 // 2. Físicas
 const physicsWorld = new PhysicsWorld()
 
-// 3. Crear escena global primero
-const scene = new THREE.Scene()
-scene.background = new THREE.Color(0x020006)
+// 3. Crear escena y Jugador a través del SceneManager
+// Usamos una escena dummy para el jugador primero para evitar errores en su constructor,
+// pero luego la reemplazamos cuando obtenemos la escena real
+const player = new Player(sceneManager.getScene(), physicsWorld)
+const scene = sceneManager.initScene(physicsWorld, player)
 
-// 4. Inicializar Jugador (con la escena)
-const player = new Player(scene, physicsWorld)
-
-// 5. Inicializar Core
+// 4. Inicializar Core (Renderer)
 const renderer = initRenderer(app)
 
-// 6. Cargar la habitación inyectando el jugador y las físicas
-import { loadRoom } from './scenes/Scene1/index.js'
-loadRoom(scene, physicsWorld, player)
+// 5. Configurar Post-procesado (EffectComposer)
+const composer = new EffectComposer(renderer);
 
-// 7. Inicializar Luces Globales
+// RenderPass: Dibuja la escena base
+const renderPass = new RenderPass(scene, player.camera);
+composer.addPass(renderPass);
+
+// FilmPass: Ruido estático y scanlines para look vintage/VHS
+const filmPass = new FilmPass(0.35, 0.4, 648, false);
+composer.addPass(filmPass);
+
+// ShaderPass: Viñeteado agresivo (bordes muy oscuros) para claustrofobia
+const vignettePass = new ShaderPass(VignetteShader);
+vignettePass.uniforms["offset"].value = 1.0;
+vignettePass.uniforms["darkness"].value = 1.1;
+composer.addPass(vignettePass);
+
+// Resize handler para composer
+window.addEventListener('resize', () => {
+    composer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// 6. Inicializar Luces Globales Prácticas
 initGlobalLights(scene)
 
-// 8. Reloj y Loop de Animación
+// 7. Reloj y Loop de Animación
 const clock = new THREE.Clock()
 
 function animate() {
@@ -46,15 +70,14 @@ function animate() {
   // Actualizar controles y cámara del jugador
   player.update()
 
-  // Sincronizar luz con la posición de la cámara
-  updateGlobalLights(player.camera.position)
+  // Sincronizar luz de jugador (linterna) con la cámara
+  updateGlobalLights(player.camera)
 
   // Actualizar lógica de la escena actual
-  updateCurrentScene(clock.elapsedTime);
+  sceneManager.updateCurrentScene(clock.elapsedTime);
 
-  // Renderizar frame
-  renderer.render(scene, player.camera)
-
+  // Renderizar frame con Post-procesado
+  composer.render()
 }
 
 animate()

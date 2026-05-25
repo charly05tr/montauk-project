@@ -1,22 +1,33 @@
-import * as THREE from 'three'
-import { loadRoom, updateScene1 } from '../scenes/Scene1/index.js'
+import * as THREE from 'three';
+import { loadRoom, updateScene1 } from '../scenes/Scene1/index.js';
+import { AtmosphereManager } from './AtmosphereManager.js';
 
-let currentScene
+class SceneManager {
+    constructor() {
+        this.currentScene = new THREE.Scene();
+        this.atmosphere = new AtmosphereManager();
+    }
 
-export function initSceneManager(physicsWorld, player) {
-  currentScene = new THREE.Scene()
-  currentScene.background = new THREE.Color(0x020006)
+    initScene(physicsWorld, player) {
+        // Cargar habitación
+        loadRoom(this.currentScene, physicsWorld, player);
+        
+        // Inyectar la atmósfera en la escena actual
+        this.atmosphere.injectIntoScene(this.currentScene);
+        
+        return this.currentScene;
+    }
 
-  loadRoom(currentScene, physicsWorld, player)
+    getScene() {
+        return this.currentScene;
+    }
 
-  return currentScene
+    updateCurrentScene(time) {
+        // Lógica para actualizar la escena actual, si aplica.
+        updateScene1(time);
+    }
 }
 
-export function getScene() {
-  return currentScene
-}
+// Exportamos una instancia global (Singleton)
+export const sceneManager = new SceneManager();
 
-export function updateCurrentScene(time) {
-  // Lógica para actualizar la escena actual, si aplica.
-  updateScene1(time)
-}

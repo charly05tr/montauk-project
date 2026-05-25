@@ -2,31 +2,25 @@ import * as THREE from 'three';
 
 export class AtmosphereManager {
     constructor() {
-        // Paleta base: tonos fríos y siniestros
-        this.skyColor = 0x6a81a4; // Azul grisáceo medio
-        this.groundColor = 0x3a4453; // Gris oscuro
-        this.fogColor = 0x080c14; // Gris oscuro azulado
+        // Paleta base: Tonos GÉLIDOS (Azules y Cianes oscuros)
+        this.skyColor = 0x5a7ba3;    // Azul frío (Luz de luna/TV)
+        // FIX DE TECHO OSCURO: En una HemisphereLight, el groundColor es la luz que va "de abajo hacia arriba" (ilumina los techos). Lo aclaramos.
+        this.groundColor = 0x3a4b66; // Gris azulado más claro para que el techo no se vea negro
+        this.fogColor = 0x050a12;    // Azul casi negro profundo
 
-        // Luces globales para dar una penumbra visible y que no sea negro total
-        this.hemisphereLight = new THREE.HemisphereLight(this.skyColor, this.groundColor, 2.5);
+        // FIX AMBIENTAL: Más luz de relleno
+        // Aumentamos a 1.2 a petición tuya para dar un poco más de luz ambiental general.
+        this.hemisphereLight = new THREE.HemisphereLight(this.skyColor, this.groundColor, 3);
         this.hemisphereLight.name = "GlobalAtmosphereLight";
 
-        // Niebla volumétrica simulada
-        this.fog = new THREE.FogExp2(this.fogColor, 0.08);
+        // La niebla se mantiene igual, pero ahora usará el nuevo fogColor azulado
+        this.fog = new THREE.FogExp2(this.fogColor, 0.05);
     }
 
-    /**
-     * Inyecta la atmósfera (luces globales y niebla) en la escena proporcionada.
-     * @param {THREE.Scene} scene - La escena activa donde se inyectará la atmósfera.
-     */
     injectIntoScene(scene) {
-        // 1. Aplicar la niebla global
         scene.fog = this.fog;
-        
-        // El fondo lo igualamos al color de la niebla para ocultar la caja del cielo
         scene.background = new THREE.Color(this.fogColor);
 
-        // 2. Comprobar si la luz ya está inyectada para no duplicar recursos
         const existingLight = scene.getObjectByName("GlobalAtmosphereLight");
         if (!existingLight) {
             scene.add(this.hemisphereLight);

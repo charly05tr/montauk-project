@@ -5,30 +5,33 @@ import { setHelpTextVisible } from '../ui/Overlay/index.js';
 
 export class Player {
     constructor(scene, physicsWorld) {
-        this.scene = scene; // Guardamos la escena
+        this.scene = scene;
+        this.physicsWorld = physicsWorld;
+
+        // Configuraciones de proporciones humanas (Escala 1:1 en metros)
+        this.radius = 0.3;
+        this.eyeHeight = 1.50; // Altura de los ojos desde el suelo
 
         // 1. CÁMARA (Mundo Visual)
         this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.02, 180);
         if (this.scene) {
-            this.scene.add(this.camera); // Añadimos la cámara a la escena
+            this.scene.add(this.camera);
         }
 
         // 2. CUERPO FÍSICO (Mundo Físico)
-        // Reducimos muchísimo el radio porque el modelo GLTF tiene scale(0.04) y la sala es minúscula
-        const radius = 0.04;
         this.body = new CANNON.Body({
             mass: 75,
-            shape: new CANNON.Sphere(radius),
-            position: new CANNON.Vec3(0, 0.1, 0),
-            fixedRotation: true // Evita que la esfera ruede y mueva la cámara a los lados
+            shape: new CANNON.Sphere(this.radius),
+            position: new CANNON.Vec3(0, 2.0, 0), // Spawn inicial de seguridad
+            fixedRotation: true,
+            linearDamping: 0.0,
+            allowSleep: false
         });
 
-        // Material para que no rebote como pelota
         const physicsMaterial = new CANNON.Material('playerMaterial');
         this.body.material = physicsMaterial;
         physicsWorld.world.addBody(this.body);
 
-        // Contact material para evitar rebotes exagerados con el suelo
         const playerContactMat = new CANNON.ContactMaterial(
             physicsWorld.world.defaultMaterial,
             physicsMaterial,
@@ -41,31 +44,23 @@ export class Player {
 
         document.body.addEventListener('click', () => {
             if (!this.controls.isLocked) {
-                // Atrapamos el error si el usuario hace click demasiado rápido después de salir
                 this.controls.lock();
             }
         });
 
-        this.controls.addEventListener('lock', () => {
-            setHelpTextVisible(false);
-        });
-
-        this.controls.addEventListener('unlock', () => {
-            setHelpTextVisible(true);
-        });
+        this.controls.addEventListener('lock', () => setHelpTextVisible(false));
+        this.controls.addEventListener('unlock', () => setHelpTextVisible(true));
 
         // 4. MOVIMIENTO (Teclado)
         this.keys = { w: false, a: false, s: false, d: false };
 
         window.addEventListener('keydown', (e) => {
-            if (this.keys.hasOwnProperty(e.key.toLowerCase())) {
-                this.keys[e.key.toLowerCase()] = true;
-            }
+            const key = e.key.toLowerCase();
+            if (this.keys.hasOwnProperty(key)) this.keys[key] = true;
         });
         window.addEventListener('keyup', (e) => {
-            if (this.keys.hasOwnProperty(e.key.toLowerCase())) {
-                this.keys[e.key.toLowerCase()] = false;
-            }
+            const key = e.key.toLowerCase();
+            if (this.keys.hasOwnProperty(key)) this.keys[key] = false;
         });
 
         // 5. RESIZE DE LA CÁMARA
@@ -76,45 +71,57 @@ export class Player {
     }
 
     setPosition(x, y, z) {
+        // Reiniciamos las físicas en el punto de spawn
         this.body.position.set(x, y, z);
         this.body.velocity.set(0, 0, 0);
-        this.camera.position.set(x, y + 0.005, z); // Sincronización inicial
-        this.camera.lookAt(x, y + 0.005, z - 1); // Mirar hacia el frente
+
+        // Sincronización inicial perfecta de la cámara
+        const eyeLevel = y - this.radius + this.eyeHeight;
+        this.camera.position.set(x, eyeLevel, z);
+        this.camera.lookAt(x, eyeLevel, z - 1);
     }
 
     update() {
-        // 1. SIEMPRE sincronizar visualmente la cámara con el cuerpo físico (incluso si no está bloqueado)
-        // Altura de los ojos (bajamos un poco más la cámara a petición)
-        this.camera.position.set(this.body.position.x, this.body.position.y + 0.005, this.body.position.z);
+        // 1. SINCRONIZACIÓN VISUAL (Ejes X y Z atados sin input lag)
+        this.camera.position.x = this.body.position.x;
+        this.camera.position.z = this.body.position.z;
 
-        // Si no está bloqueado el ratón, el jugador no puede moverse, pero la gravedad sigue afectándolo
+        // 2. INTERPOLACIÓN VERTICAL (Suaviza escalones y caídas)
+        const eyeLevel = this.body.position.y - this.radius + this.eyeHeight;
+        this.camera.position.y = THREE.MathUtils.lerp(
+            this.camera.position.y,
+            eyeLevel,
+            0.15
+        );
+
         if (!this.controls.isLocked) return;
 
-        // 2. WASD
+        // 3. VECTORES DE DIRECCIÓN (WASD)
         const x = Number(this.keys.d) - Number(this.keys.a);
         const z = Number(this.keys.s) - Number(this.keys.w);
 
         const moveDir = new THREE.Vector3(x, 0, z);
         if (moveDir.lengthSq() > 0) moveDir.normalize();
 
-        // 3. Extraer rotación horizontal de la cámara
+        // 4. ALINEACIÓN DE CÁMARA
         const euler = new THREE.Euler(0, 0, 0, 'YXZ');
         euler.setFromQuaternion(this.camera.quaternion);
-
-        // 4. Alinear el movimiento
         moveDir.applyEuler(new THREE.Euler(0, euler.y, 0));
 
-        const speed = 1; // Velocidad de caminata ajustada
+        const speed = 8.0; // Velocidad estándar (m/s)
 
-        // 5. Aplicar la velocidad física
+        // 5. APLICAR VELOCIDAD Y FRICCIÓN (Dejando el eje Y libre para la gravedad)
         if (moveDir.lengthSq() > 0) {
-            // Reemplaza la velocidad X y Z, pero conserva la Y (gravedad)
             this.body.velocity.x = moveDir.x * speed;
             this.body.velocity.z = moveDir.z * speed;
         } else {
-            // Fricción manual en X y Z cuando no pulsas teclas (para resbalar un poco y parar)
             this.body.velocity.x *= 0.8;
             this.body.velocity.z *= 0.8;
+        }
+
+        // 6. LÍMITE DE VELOCIDAD TERMINAL (Evita caídas que rompan el mapa)
+        if (this.body.velocity.y < -25.0) {
+            this.body.velocity.y = -25.0;
         }
     }
 }

@@ -59,6 +59,7 @@ initGlobalLights(scene)
 
 // 7. Atajo de teclado especial para alternar escenas ("HELP")
 let typedBuffer = ''
+const sceneOrder = ['scene1', 'scene2', 'scene3']
 window.addEventListener('keydown', (e) => {
   if (e.key.length !== 1) return // Ignorar teclas especiales (Shift, Ctrl, etc.)
   
@@ -68,7 +69,8 @@ window.addEventListener('keydown', (e) => {
   }
   
   if (typedBuffer === 'help') {
-    const nextScene = sceneManager.activeSceneId === 'scene1' ? 'scene2' : 'scene1'
+    const currentIndex = sceneOrder.indexOf(sceneManager.activeSceneId)
+    const nextScene = sceneOrder[(currentIndex + 1) % sceneOrder.length]
     console.log(`Codi/Atajo detectado. Cambiando de escena a: ${nextScene}`)
     sceneManager.switchScene(nextScene, physicsWorld, player)
     typedBuffer = '' // Limpiar buffer tras activar

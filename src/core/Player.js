@@ -13,7 +13,7 @@ export class Player {
         this.eyeHeight = 1.50; // Altura de los ojos desde el suelo
 
         // 1. CÁMARA (Mundo Visual)
-        this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.02, 180);
+        this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.02, 420);
         if (this.scene) {
             this.scene.add(this.camera);
         }
@@ -53,6 +53,8 @@ export class Player {
 
         // 4. MOVIMIENTO (Teclado)
         this.keys = { w: false, a: false, s: false, d: false };
+        this.movementBounds = null;
+        this.movementProfile = null;
 
         window.addEventListener('keydown', (e) => {
             const key = e.key.toLowerCase();
@@ -70,7 +72,7 @@ export class Player {
         });
     }
 
-    setPosition(x, y, z) {
+    setPosition(x, y, z, lookAt = null) {
         // Reiniciamos las físicas en el punto de spawn
         this.body.position.set(x, y, z);
         this.body.velocity.set(0, 0, 0);
@@ -78,10 +80,105 @@ export class Player {
         // Sincronización inicial perfecta de la cámara
         const eyeLevel = y - this.radius + this.eyeHeight;
         this.camera.position.set(x, eyeLevel, z);
-        this.camera.lookAt(x, eyeLevel, z - 1);
+        if (lookAt) {
+            this.camera.lookAt(lookAt.x, lookAt.y ?? eyeLevel, lookAt.z);
+        } else {
+            this.camera.lookAt(x, eyeLevel, z - 1);
+        }
+    }
+
+    setMovementBounds(bounds = null) {
+        this.movementBounds = bounds;
+    }
+
+    setMovementProfile(profile = null) {
+        this.movementProfile = profile;
+    }
+
+    applyMovementProfile() {
+        if (!this.movementProfile || this.movementProfile.mode !== 'linearTunnel') return false;
+
+        const {
+            axis,
+            forwardSign = 1,
+            lateralLock,
+            lookAhead = 8,
+            eyeYOffset = 0
+        } = this.movementProfile;
+
+        const directionInput = Number(this.keys.s) - Number(this.keys.w);
+        const speed = 6.0;
+        const velocity = directionInput * speed * forwardSign;
+
+        if (axis === 'x') {
+            this.body.velocity.x = velocity;
+            this.body.velocity.z *= 0.12;
+            if (typeof lateralLock === 'number') {
+                this.body.position.z = lateralLock;
+                this.body.velocity.z = 0;
+            }
+        } else {
+            this.body.velocity.z = velocity;
+            this.body.velocity.x *= 0.12;
+            if (typeof lateralLock === 'number') {
+                this.body.position.x = lateralLock;
+                this.body.velocity.x = 0;
+            }
+        }
+
+        if (directionInput === 0) {
+            if (axis === 'x') {
+                this.body.velocity.x *= 0.65;
+            } else {
+                this.body.velocity.z *= 0.65;
+            }
+        }
+
+        const eyeLevel = this.body.position.y - this.radius + this.eyeHeight + eyeYOffset;
+        const targetX = axis === 'x'
+            ? this.body.position.x + forwardSign * lookAhead
+            : this.body.position.x;
+        const targetZ = axis === 'z'
+            ? this.body.position.z + forwardSign * lookAhead
+            : this.body.position.z;
+
+        this.camera.lookAt(targetX, eyeLevel, targetZ);
+        return true;
+    }
+
+    enforceMovementBounds() {
+        if (!this.movementBounds) return;
+
+        const {
+            minX, maxX, minY, maxY, minZ, maxZ, safePosition
+        } = this.movementBounds;
+
+        const x = this.body.position.x;
+        const y = this.body.position.y;
+        const z = this.body.position.z;
+
+        const escaped =
+            y < minY - 1.5 ||
+            x < minX - 1.0 || x > maxX + 1.0 ||
+            z < minZ - 1.0 || z > maxZ + 1.0;
+
+        if (escaped && safePosition) {
+            this.body.position.set(safePosition.x, safePosition.y, safePosition.z);
+            this.body.velocity.set(0, 0, 0);
+        }
+
+        this.body.position.x = Math.min(Math.max(this.body.position.x, minX), maxX);
+        this.body.position.y = Math.min(Math.max(this.body.position.y, minY), maxY);
+        this.body.position.z = Math.min(Math.max(this.body.position.z, minZ), maxZ);
+
+        if (this.body.velocity.y < 0 && this.body.position.y <= minY + 0.001) {
+            this.body.velocity.y = 0;
+        }
     }
 
     update() {
+        this.enforceMovementBounds();
+
         // 1. SINCRONIZACIÓN VISUAL (Ejes X y Z atados sin input lag)
         this.camera.position.x = this.body.position.x;
         this.camera.position.z = this.body.position.z;
@@ -93,6 +190,13 @@ export class Player {
             eyeLevel,
             0.15
         );
+
+        if (this.applyMovementProfile()) {
+            if (this.body.velocity.y < -25.0) {
+                this.body.velocity.y = -25.0;
+            }
+            return;
+        }
 
         if (!this.controls.isLocked) return;
 

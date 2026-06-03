@@ -18,8 +18,13 @@ export class AtmosphereManager {
     }
 
     injectIntoScene(scene) {
-        scene.fog = this.fog;
-        scene.background = new THREE.Color(this.fogColor);
+        if (!scene.fog) {
+            scene.fog = this.fog;
+        }
+
+        if (!scene.background) {
+            scene.background = new THREE.Color(this.fogColor);
+        }
 
         const existingLight = scene.getObjectByName("GlobalAtmosphereLight");
         if (!existingLight) {

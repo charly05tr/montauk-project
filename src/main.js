@@ -59,7 +59,7 @@ initGlobalLights(scene)
 
 // 7. Atajo de teclado especial para alternar escenas ("HELP")
 let typedBuffer = ''
-const sceneOrder = ['scene1', 'scene2', 'scene3']
+const sceneOrder = ['scene1', 'scene2', 'scene3', 'scene4']
 window.addEventListener('keydown', (e) => {
   if (e.key.length !== 1) return // Ignorar teclas especiales (Shift, Ctrl, etc.)
   

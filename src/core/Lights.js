@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 
-let cameraLight
+export let cameraLight
 
 export function initGlobalLights(scene) {
   // UNIFICACIÓN DE DIFUMINADO: Transición Cinemática y Suave
@@ -16,7 +16,10 @@ export function initGlobalLights(scene) {
 
   // 3. FIX DE ÁNGULO: Para que no se vea el "círculo" en la pared, hacemos el cono mucho más ancho.
   // Math.PI / 2.5 (72 grados) asegura que los bordes queden fuera de la vista central.
-  cameraLight = new THREE.SpotLight(0xccf0ff, 30.0, 25.0, Math.PI / 2.5, 1.0, 2.0)
+  // 2. Ajustamos la intensidad a 15.0 y el ángulo a Math.PI / 5 (36 grados)
+  // Esto crea un cono de linterna mucho más realista y enfocado, evitando que se desborde
+  // y queme las paredes que tenemos justo al lado.
+  cameraLight = new THREE.SpotLight(0xccf0ff, 15.0, 20.0, Math.PI / 5, 1.0, 2.0)
 
   scene.add(cameraLight)
   scene.add(cameraLight.target) // El objetivo del foco también debe estar en la escena
@@ -28,9 +31,11 @@ export function updateGlobalLights(camera) {
     const direction = new THREE.Vector3()
     camera.getWorldDirection(direction)
 
-    // 2. EL FIX DEFINITIVO DE CERCANÍA: Mover la luz 0.5 metros DETRÁS de la cámara.
-    // Lo ponemos a 0.5 (en vez de 0.8) para evitar que la luz atraviese la pared si te pegas de espaldas.
-    cameraLight.position.copy(camera.position).addScaledVector(direction, -0.5)
+    // 2. EL FIX DEFINITIVO DE CERCANÍA: Colocamos la luz exactamente en la posición de la cámara (0.0).
+    // Como el cuerpo del jugador tiene un radio de colisión de 0.3m, la linterna nunca
+    // atravesará las paredes, y al no estar posicionada detrás de la cámara,
+    // evita iluminar de forma extrema los muros laterales inmediatos al jugador.
+    cameraLight.position.copy(camera.position)
 
     // 3. Proyectamos el target a 5 metros frente a la cámara para estabilizar el cono
     cameraLight.target.position.copy(camera.position).add(direction.multiplyScalar(5))

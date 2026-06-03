@@ -57,7 +57,25 @@ window.addEventListener('resize', () => {
 // 6. Inicializar Luces Globales Prácticas
 initGlobalLights(scene)
 
-// 7. Reloj y Loop de Animación
+// 7. Atajo de teclado especial para alternar escenas ("HELP")
+let typedBuffer = ''
+window.addEventListener('keydown', (e) => {
+  if (e.key.length !== 1) return // Ignorar teclas especiales (Shift, Ctrl, etc.)
+  
+  typedBuffer += e.key.toLowerCase()
+  if (typedBuffer.length > 4) {
+    typedBuffer = typedBuffer.substring(typedBuffer.length - 4)
+  }
+  
+  if (typedBuffer === 'help') {
+    const nextScene = sceneManager.activeSceneId === 'scene1' ? 'scene2' : 'scene1'
+    console.log(`Codi/Atajo detectado. Cambiando de escena a: ${nextScene}`)
+    sceneManager.switchScene(nextScene, physicsWorld, player)
+    typedBuffer = '' // Limpiar buffer tras activar
+  }
+})
+
+// 8. Reloj y Loop de Animación
 const clock = new THREE.Clock()
 
 function animate() {

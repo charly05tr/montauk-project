@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { loadRoom, updateScene1 } from '../scenes/Scene1/index.js';
 import { loadRoomScene2, updateScene2 } from '../scenes/Scene2/index.js';
+import { loadTunnelScene, updateScene3 } from '../scenes/Scene3/index.js';
 import { AtmosphereManager } from './AtmosphereManager.js';
 import { cameraLight } from './Lights.js';
 import { setHelpText } from '../ui/Overlay/index.js';
@@ -13,11 +14,20 @@ class SceneManager {
     }
 
     initScene(physicsWorld, player) {
+        this.currentScene.background = null;
+        this.currentScene.fog = null;
+        player.setMovementBounds?.(null);
+        player.setMovementProfile?.(null);
+
         // Cargar habitación según la escena activa
         if (this.activeSceneId === 'scene1') {
             loadRoom(this.currentScene, physicsWorld, player);
         } else {
-            loadRoomScene2(this.currentScene, physicsWorld, player);
+            if (this.activeSceneId === 'scene2') {
+                loadRoomScene2(this.currentScene, physicsWorld, player);
+            } else {
+                loadTunnelScene(this.currentScene, physicsWorld, player);
+            }
         }
         
         // Inyectar la atmósfera en la escena actual
@@ -35,6 +45,8 @@ class SceneManager {
             updateScene1(time);
         } else if (this.activeSceneId === 'scene2') {
             updateScene2(time);
+        } else if (this.activeSceneId === 'scene3') {
+            updateScene3(time);
         }
     }
 
@@ -43,6 +55,8 @@ class SceneManager {
 
         setHelpText('Cargando nueva escena...');
         this.activeSceneId = sceneId;
+        player.setMovementBounds?.(null);
+        player.setMovementProfile?.(null);
 
         // 1. Limpiar objetos de la escena de Three.js
         // Mantenemos la cámara del jugador, la luz del jugador y su target
@@ -57,6 +71,9 @@ class SceneManager {
             }
         }
 
+        this.currentScene.background = null;
+        this.currentScene.fog = null;
+
         // 2. Limpiar cuerpos del mundo físico (Cannon.js)
         // Mantenemos el cuerpo físico del jugador
         const bodies = [...physicsWorld.world.bodies];
@@ -69,8 +86,10 @@ class SceneManager {
         // 3. Cargar la nueva escena
         if (this.activeSceneId === 'scene1') {
             loadRoom(this.currentScene, physicsWorld, player);
-        } else {
+        } else if (this.activeSceneId === 'scene2') {
             loadRoomScene2(this.currentScene, physicsWorld, player);
+        } else {
+            loadTunnelScene(this.currentScene, physicsWorld, player);
         }
 
         // 4. Volver a inyectar la atmósfera

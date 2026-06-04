@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { setHelpTextVisible } from '../ui/Overlay/index.js';
+import { soundManager } from './SoundManager.js';
 
 export class Player {
     constructor(scene, physicsWorld) {
@@ -18,6 +19,11 @@ export class Player {
         if (this.scene) {
             this.scene.add(this.camera);
         }
+
+        // 1.1 OYENTE DE AUDIO (Mundo Auditivo)
+        this.listener = new THREE.AudioListener();
+        this.camera.add(this.listener);
+        soundManager.setListener(this.listener);
 
         // 2. CUERPO FÍSICO (Mundo Físico)
         this.body = new CANNON.Body({
@@ -46,6 +52,7 @@ export class Player {
         this.speed = 4.5; // Velocidad de caminata más controlada y realista (m/s)
 
         document.body.addEventListener('click', () => {
+            soundManager.resumeContext();
             if (!this.controls.isLocked) {
                 this.controls.lock();
             }

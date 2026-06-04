@@ -6,6 +6,7 @@ import { loadSchoolScene, updateScene4 } from '../scenes/Scene4/index.js';
 import { AtmosphereManager } from './AtmosphereManager.js';
 import { cameraLight } from './Lights.js';
 import { setHelpText } from '../ui/Overlay/index.js';
+import { soundManager } from './SoundManager.js';
 
 class SceneManager {
     constructor() {
@@ -60,6 +61,10 @@ class SceneManager {
         this.activeSceneId = sceneId;
         player.setMovementBounds?.(null);
         player.setMovementProfile?.(null);
+
+        // Detener todos los audios de la escena anterior
+        soundManager.stopAllAmbient();
+        soundManager.stopAllPositional();
 
         // 1. Limpiar objetos de la escena de Three.js
         // Mantenemos la cámara del jugador, la luz del jugador y su target

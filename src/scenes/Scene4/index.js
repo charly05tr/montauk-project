@@ -5,6 +5,7 @@ import { setHelpText } from '../../ui/Overlay/index.js';
 import { ENABLE_SHADOWS } from '../../utils/constants.js';
 import { getMaterialName, tuneSchoolMaterial } from './objects.js';
 import { createStaticBox, createBoxFromMesh, createTrimeshFromMesh } from '../../physics/Collider.js';
+import { soundManager } from '../../core/SoundManager.js';
 
 export let redLight, orangeLight;
 
@@ -25,10 +26,15 @@ export function loadSchoolScene(scene, physicsWorld, player) {
     (gltf) => {
       const model = gltf.scene;
 
+      model.rotation.x = Math.PI / 2; // (o Math.PI / 2 si gira al revés)
+
       // --- 1. ESCALA DINÁMICA ---
       // Calculamos el tamaño original "crudo" que trae el modelo
       const initialBox = new THREE.Box3().setFromObject(model);
       const rawHeight = initialBox.getSize(new THREE.Vector3()).y || 1;
+
+      // Play audio
+      soundManager.playAmbient('school_ambient', '/sounds/general_music.mp3', true, 0.4);
 
       // Forzamos que la altura de la escuela sea ~5.2 metros (en lugar de 3.5)
       // para hacer los pasillos/salones más anchos y espaciosos, mejorando la navegación
@@ -70,12 +76,12 @@ export function loadSchoolScene(scene, physicsWorld, player) {
 
         // 3.1 Ignoramos suelos, techos, luces y cristales transparentes
         if (
-          nodeName.includes('floor') || 
-          nodeName.includes('roof') || 
-          nodeName.includes('ceiling') || 
-          nodeName.includes('light') || 
-          nodeName.includes('lamp') || 
-          nodeName.includes('cartel') || 
+          nodeName.includes('floor') ||
+          nodeName.includes('roof') ||
+          nodeName.includes('ceiling') ||
+          nodeName.includes('light') ||
+          nodeName.includes('lamp') ||
+          nodeName.includes('cartel') ||
           nodeName.includes('glass')
         ) {
           return;

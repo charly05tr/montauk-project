@@ -13,8 +13,9 @@ const _localCenter = new THREE.Vector3();
 
 /**
  * Crea una caja estática manual en el mundo físico (Ideal para suelos y paredes invisibles).
+ * 
  */
-export function createStaticBox(physicsWorld, width, height, depth, position) {
+export function createStaticBox(physicsWorld, width, height, depth, position, rotationEuler = null) {
     // Cannon.js utiliza half-extents (la mitad de las dimensiones totales)
     const shape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
 
@@ -23,6 +24,12 @@ export function createStaticBox(physicsWorld, width, height, depth, position) {
         shape: shape,
         position: new CANNON.Vec3(position.x, position.y, position.z)
     });
+
+    if (rotationEuler) {
+        const q = new CANNON.Quaternion();
+        q.setFromEuler(rotationEuler.x || 0, rotationEuler.y || 0, rotationEuler.z || 0, 'XYZ');
+        body.quaternion.copy(q);
+    }
 
     physicsWorld.world.addBody(body);
     return body;

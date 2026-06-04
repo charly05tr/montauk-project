@@ -83,7 +83,9 @@ export function loadTunnelScene(scene, physicsWorld, player) {
 
       const initialBox = new THREE.Box3().setFromObject(tunnelModel);
       const rawHeight = initialBox.getSize(new THREE.Vector3()).y || 1;
-      const targetHeight = 6.0;
+      // Incrementamos la escala del túnel para que el personaje se sienta más pequeño
+      // y no choque con las paredes
+      const targetHeight = 10.0;
       const scaleFactor = targetHeight / rawHeight;
 
       tunnelModel.scale.setScalar(scaleFactor);
@@ -99,123 +101,278 @@ export function loadTunnelScene(scene, physicsWorld, player) {
       const finalBox = new THREE.Box3().setFromObject(tunnelModel);
       const finalSize = finalBox.getSize(new THREE.Vector3());
       const finalCenter = finalBox.getCenter(new THREE.Vector3());
+
+      // Determinar el eje principal del túnel (el más largo)
       const primaryAxis = finalSize.z >= finalSize.x ? 'z' : 'x';
       const primaryMin = primaryAxis === 'z' ? finalBox.min.z : finalBox.min.x;
       const primaryMax = primaryAxis === 'z' ? finalBox.max.z : finalBox.max.x;
       const primarySize = primaryAxis === 'z' ? finalSize.z : finalSize.x;
-      const tunnelHalfWidth = (primaryAxis === 'z' ? finalSize.x : finalSize.z) * 0.5;
-      const corridorHalfWidth = Math.max(0.6, Math.min(1.1, tunnelHalfWidth * 0.28));
 
+      // Ancho lateral del túnel (eje perpendicular al recorrido)
+      const lateralSize = primaryAxis === 'z' ? finalSize.x : finalSize.z;
+      const tunnelHalfWidth = lateralSize * 0.5;
+
+      // Ancho caminable: 45% del ancho total del modelo
+      // Incrementamos el max a 2.5 para aprovechar el nuevo tamaño
+      const corridorHalfWidth = Math.max(0.8, Math.min(2.5, tunnelHalfWidth * 0.45));
+
+      // --- MATERIALES ---
       tunnelModel.traverse((child) => {
         if (!child.isMesh) return;
-
         child.material = Array.isArray(child.material)
           ? child.material.map(prepareTunnelMaterial)
           : prepareTunnelMaterial(child.material);
-
         child.castShadow = ENABLE_SHADOWS;
         child.receiveShadow = ENABLE_SHADOWS;
         child.frustumCulled = false;
       });
 
-      // Corredor interno lineal para que el usuario solo recorra el túnel en línea recta
-      const w = finalSize.x;
-      const h = finalSize.y;
-      const d = finalSize.z;
-      const wallThickness = 0.35;
-      const corridorHeight = 2.6;
-      const corridorCenterY = finalBox.min.y + corridorHeight * 0.5;
-      const corridorLength = Math.max(2, primarySize - 2.0);
+      // =====================================================
+      // ESCANEO DEL PISO REAL DEL TÚNEL
+      // =====================================================
+      // Escaneamos los vértices de la geometría para encontrar
+      // la altura real del piso interior. Buscamos los vértices
+      // más bajos que estén cerca del eje central del túnel
+      // (esos son el piso caminable, no la base exterior).
+
+      const scanMargin = corridorHalfWidth * 1.5; // Zona central para buscar el piso
+      const numSegments = 8; // Dividimos el túnel en 8 segmentos
+      const segmentLength = primarySize / numSegments;
+      const segmentFloorY = new Array(numSegments).fill(finalBox.max.y); // Iniciar al máximo
+
+      tunnelModel.traverse((child) => {
+        if (!child.isMesh || !child.geometry?.attributes?.position) return;
+
+        const posAttr = child.geometry.attributes.position;
+        const matrix = child.matrixWorld;
+        const vertex = new THREE.Vector3();
+
+        for (let i = 0; i < posAttr.count; i++) {
+          vertex.set(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
+          vertex.applyMatrix4(matrix);
+
+          // Solo considerar vértices cerca del eje central (el pasillo)
+          const lateralDist = primaryAxis === 'z'
+            ? Math.abs(vertex.x - finalCenter.x)
+            : Math.abs(vertex.z - finalCenter.z);
+
+          if (lateralDist > scanMargin) continue;
+
+          // Determinar en qué segmento cae este vértice
+          const primaryPos = primaryAxis === 'z' ? vertex.z : vertex.x;
+          const segIndex = Math.floor((primaryPos - primaryMin) / segmentLength);
+          if (segIndex < 0 || segIndex >= numSegments) continue;
+
+          // Solo vértices en la mitad inferior del modelo (el piso, no el techo)
+          if (vertex.y < finalCenter.y && vertex.y < segmentFloorY[segIndex]) {
+            segmentFloorY[segIndex] = vertex.y;
+          }
+        }
+      });
+
+      // Suavizar: si algún segmento no encontró vértices, interpolar
+      for (let i = 0; i < numSegments; i++) {
+        if (segmentFloorY[i] >= finalBox.max.y) {
+          // Buscar vecinos válidos
+          const prev = i > 0 ? segmentFloorY[i - 1] : null;
+          const next = i < numSegments - 1 ? segmentFloorY[i + 1] : null;
+          if (prev !== null && prev < finalBox.max.y) {
+            segmentFloorY[i] = prev;
+          } else if (next !== null && next < finalBox.max.y) {
+            segmentFloorY[i] = next;
+          } else {
+            segmentFloorY[i] = finalCenter.y - finalSize.y * 0.25;
+          }
+        }
+      }
+
+      console.log('[TÚNEL] Pisos escaneados por segmento:', segmentFloorY.map(y => y.toFixed(2)));
+
+      // =====================================================
+      // COLISIONES: Suelo inclinado + Paredes laterales
+      // =====================================================
+      // Para evitar que el jugador se quede pegado en escalones (stairs),
+      // calculamos la pendiente (slope) general del túnel y usamos
+      // cajas únicas rotadas.
+
+      const floorThickness = 1.5;
+      const wallThickness = 0.5;
+      const corridorHeight = 6.0;
+      const floorWidth = corridorHalfWidth * 2 + 2.0;
+
+      // Usar el primer y último segmento válidos para calcular la pendiente
+      const firstY = segmentFloorY[0];
+      const lastY = segmentFloorY[numSegments - 1];
+      const deltaY = lastY - firstY;
+
+      // La longitud total que cubren los segmentos
+      const totalCoveredLength = primarySize;
+
+      // Ángulo de inclinación (SOH CAH TOA)
+      const slopeAngle = Math.atan2(deltaY, totalCoveredLength);
+
+      // El centro Y de la caja inclinada será el promedio del inicio y fin
+      const midFloorY = (firstY + lastY) / 2;
+
+      // Aumentar un poco la longitud para evitar huecos en los bordes por la rotación
+      const slopedLength = totalCoveredLength / Math.cos(slopeAngle) + 2.0;
+
+      console.log('[TÚNEL] Pendiente calculada:', { deltaY: deltaY.toFixed(2), angle: slopeAngle.toFixed(3) });
 
       if (primaryAxis === 'z') {
-        createStaticBox(physicsWorld, corridorHalfWidth * 2, wallThickness, corridorLength, {
+        // Rotación alrededor del eje X para inclinar en Z
+        // Si z va de negativo a positivo, un deltaY negativo significa que baja a medida que z aumenta.
+        // Rotar en X inclina el eje Z.
+        const rotationEuler = { x: -slopeAngle, y: 0, z: 0 };
+
+        // Suelo inclinado
+        createStaticBox(physicsWorld, floorWidth, floorThickness, slopedLength, {
           x: finalCenter.x,
-          y: finalBox.min.y - wallThickness * 0.5,
+          y: midFloorY - floorThickness * 0.5,
           z: finalCenter.z
-        });
-        createStaticBox(physicsWorld, corridorHalfWidth * 2, wallThickness, corridorLength, {
-          x: finalCenter.x,
-          y: finalBox.min.y + corridorHeight + wallThickness * 0.5,
-          z: finalCenter.z
-        });
-        createStaticBox(physicsWorld, wallThickness, corridorHeight, corridorLength, {
+        }, rotationEuler);
+
+        // Paredes inclinadas
+        createStaticBox(physicsWorld, wallThickness, corridorHeight, slopedLength, {
           x: finalCenter.x - corridorHalfWidth - wallThickness * 0.5,
-          y: corridorCenterY,
+          y: midFloorY + corridorHeight * 0.5,
           z: finalCenter.z
-        });
-        createStaticBox(physicsWorld, wallThickness, corridorHeight, corridorLength, {
+        }, rotationEuler);
+
+        createStaticBox(physicsWorld, wallThickness, corridorHeight, slopedLength, {
           x: finalCenter.x + corridorHalfWidth + wallThickness * 0.5,
-          y: corridorCenterY,
+          y: midFloorY + corridorHeight * 0.5,
           z: finalCenter.z
-        });
-        createStaticBox(physicsWorld, corridorHalfWidth * 2, corridorHeight, wallThickness, {
+        }, rotationEuler);
+
+      } else {
+        // Rotación alrededor del eje Z para inclinar en X
+        const rotationEuler = { x: 0, y: 0, z: slopeAngle };
+
+        // Suelo inclinado
+        createStaticBox(physicsWorld, slopedLength, floorThickness, floorWidth, {
           x: finalCenter.x,
-          y: corridorCenterY,
+          y: midFloorY - floorThickness * 0.5,
+          z: finalCenter.z
+        }, rotationEuler);
+
+        // Paredes inclinadas
+        createStaticBox(physicsWorld, slopedLength, corridorHeight, wallThickness, {
+          x: finalCenter.x,
+          y: midFloorY + corridorHeight * 0.5,
+          z: finalCenter.z - corridorHalfWidth - wallThickness * 0.5
+        }, rotationEuler);
+
+        createStaticBox(physicsWorld, slopedLength, corridorHeight, wallThickness, {
+          x: finalCenter.x,
+          y: midFloorY + corridorHeight * 0.5,
+          z: finalCenter.z + corridorHalfWidth + wallThickness * 0.5
+        }, rotationEuler);
+      }
+
+      // Tapas de inicio y final del túnel
+      const avgFloorY = segmentFloorY.reduce((a, b) => a + b) / numSegments;
+      if (primaryAxis === 'z') {
+        createStaticBox(physicsWorld, floorWidth, corridorHeight, wallThickness, {
+          x: finalCenter.x,
+          y: avgFloorY + corridorHeight * 0.5,
           z: primaryMin - wallThickness * 0.5
         });
-        createStaticBox(physicsWorld, corridorHalfWidth * 2, corridorHeight, wallThickness, {
+        createStaticBox(physicsWorld, floorWidth, corridorHeight, wallThickness, {
           x: finalCenter.x,
-          y: corridorCenterY,
+          y: avgFloorY + corridorHeight * 0.5,
           z: primaryMax + wallThickness * 0.5
         });
       } else {
-        createStaticBox(physicsWorld, corridorLength, wallThickness, corridorHalfWidth * 2, {
-          x: finalCenter.x,
-          y: finalBox.min.y - wallThickness * 0.5,
-          z: finalCenter.z
-        });
-        createStaticBox(physicsWorld, corridorLength, wallThickness, corridorHalfWidth * 2, {
-          x: finalCenter.x,
-          y: finalBox.min.y + corridorHeight + wallThickness * 0.5,
-          z: finalCenter.z
-        });
-        createStaticBox(physicsWorld, corridorLength, corridorHeight, wallThickness, {
-          x: finalCenter.x,
-          y: corridorCenterY,
-          z: finalCenter.z - corridorHalfWidth - wallThickness * 0.5
-        });
-        createStaticBox(physicsWorld, corridorLength, corridorHeight, wallThickness, {
-          x: finalCenter.x,
-          y: corridorCenterY,
-          z: finalCenter.z + corridorHalfWidth + wallThickness * 0.5
-        });
-        createStaticBox(physicsWorld, wallThickness, corridorHeight, corridorHalfWidth * 2, {
+        createStaticBox(physicsWorld, wallThickness, corridorHeight, floorWidth, {
           x: primaryMin - wallThickness * 0.5,
-          y: corridorCenterY,
+          y: avgFloorY + corridorHeight * 0.5,
           z: finalCenter.z
         });
-        createStaticBox(physicsWorld, wallThickness, corridorHeight, corridorHalfWidth * 2, {
+        createStaticBox(physicsWorld, wallThickness, corridorHeight, floorWidth, {
           x: primaryMax + wallThickness * 0.5,
-          y: corridorCenterY,
+          y: avgFloorY + corridorHeight * 0.5,
           z: finalCenter.z
         });
       }
 
-      // Spawn seguro según el eje real del túnel
-      const spawnPrimary = primaryMin + Math.max(5.5, primarySize * 0.12);
-      const spawnY = finalBox.min.y + 1.0;
+      // Techo sólido
+      const ceilingY = avgFloorY + corridorHeight;
+      if (primaryAxis === 'z') {
+        createStaticBox(physicsWorld, floorWidth, wallThickness, primarySize + 2.0, {
+          x: finalCenter.x,
+          y: ceilingY + wallThickness * 0.5,
+          z: finalCenter.z
+        });
+      } else {
+        createStaticBox(physicsWorld, primarySize + 2.0, wallThickness, floorWidth, {
+          x: finalCenter.x,
+          y: ceilingY + wallThickness * 0.5,
+          z: finalCenter.z
+        });
+      }
+
+      // =====================================================
+      // SPAWN Y MOVIMIENTO
+      // =====================================================
+
+      // 1. Determinar cuál lado del túnel es el más bajo
+      const startsLow = firstY < lastY;
+
+      // 2. Spawn en el extremo más bajo
+      const spawnOffset = Math.max(5.5, primarySize * 0.12);
+      let spawnPrimary, lookAtPrimary, spawnFloorY;
+
+      if (startsLow) {
+        // El inicio (primaryMin) es el más bajo
+        spawnPrimary = primaryMin + spawnOffset;
+        lookAtPrimary = primaryMax; // Mirar hacia arriba
+        spawnFloorY = firstY;
+      } else {
+        // El final (primaryMax) es el más bajo
+        spawnPrimary = primaryMax - spawnOffset;
+        lookAtPrimary = primaryMin; // Mirar hacia arriba
+        spawnFloorY = lastY;
+      }
+
+      const spawnY = spawnFloorY + player.radius + 0.3;
       const spawnX = primaryAxis === 'x' ? spawnPrimary : finalCenter.x;
       const spawnZ = primaryAxis === 'z' ? spawnPrimary : finalCenter.z;
+
       const lookAt = {
-        x: primaryAxis === 'x' ? finalCenter.x : spawnX,
-        y: spawnY - player.radius + player.eyeHeight - 0.15,
-        z: primaryAxis === 'z' ? finalCenter.z : spawnZ
+        x: primaryAxis === 'x' ? lookAtPrimary : finalCenter.x,
+        y: spawnY - player.radius + player.eyeHeight,
+        z: primaryAxis === 'z' ? lookAtPrimary : finalCenter.z
       };
 
+      console.log('[TÚNEL] Spawn:', {
+        spawnX: spawnX.toFixed(2),
+        spawnY: spawnY.toFixed(2),
+        spawnZ: spawnZ.toFixed(2),
+        startsLow
+      });
+
       player.setPosition(spawnX, spawnY, spawnZ, lookAt);
+
+      // 3. Configuración de movimiento para el túnel
       player.setMovementProfile(null);
+      player.allowLateral = false; // Solo W y S
+      player.movementSpeed = 6.0;  // Velocidad ajustada
+
+      // Bounds como red de emergencia
+      const lowestFloor = Math.min(...segmentFloorY);
       player.setMovementBounds({
-        minX: primaryAxis === 'x' ? primaryMin + 1.0 : finalCenter.x - corridorHalfWidth,
-        maxX: primaryAxis === 'x' ? primaryMax - 1.0 : finalCenter.x + corridorHalfWidth,
-        minY: finalBox.min.y + 0.85,
-        maxY: finalBox.min.y + 1.35,
-        minZ: primaryAxis === 'z' ? primaryMin + 1.0 : finalCenter.z - corridorHalfWidth,
-        maxZ: primaryAxis === 'z' ? primaryMax - 1.0 : finalCenter.z + corridorHalfWidth,
+        minX: finalBox.min.x - 2.0,
+        maxX: finalBox.max.x + 2.0,
+        minY: lowestFloor - 1.0,
+        maxY: ceilingY + 2.0,
+        minZ: finalBox.min.z - 2.0,
+        maxZ: finalBox.max.z + 2.0,
         safePosition: { x: spawnX, y: spawnY, z: spawnZ }
       });
 
       setMainSceneReady();
-      setHelpText('Escena 3: Túnel | Click y mueve el mouse para mirar | WASD recorrer');
+      setHelpText('Escena 3: Túnel | W/S: Avanzar/Retroceder | F: Linterna | Click para entrar');
     },
     undefined,
     (error) => {

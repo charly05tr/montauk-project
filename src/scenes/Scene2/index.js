@@ -21,7 +21,7 @@ export function loadRoomScene2(scene, physicsWorld, player) {
   const gltfLoader = new GLTFLoader(loadingManager);
 
   gltfLoader.load(
-    '/models/hospital_corridor/scene.gltf',
+    '/models/Velez_Paiz.glb',
     (gltf) => {
       const model = gltf.scene;
 
@@ -70,12 +70,12 @@ export function loadRoomScene2(scene, physicsWorld, player) {
         // Ignoramos suelos, techos, luces y cristales transparentes para la generación de físicas individuales,
         // ya que los suelos/techos tendrán físicas perimetrales globales y los cristales/luces no deben bloquear.
         if (
-          nodeName.includes('floor') || 
-          nodeName.includes('roof') || 
-          nodeName.includes('ceiling') || 
-          nodeName.includes('light') || 
-          nodeName.includes('lamp') || 
-          nodeName.includes('cartel') || 
+          nodeName.includes('floor') ||
+          nodeName.includes('roof') ||
+          nodeName.includes('ceiling') ||
+          nodeName.includes('light') ||
+          nodeName.includes('lamp') ||
+          nodeName.includes('cartel') ||
           nodeName.includes('glass')
         ) {
           return;

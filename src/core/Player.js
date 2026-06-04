@@ -12,6 +12,8 @@ export class Player {
         // Configuraciones de proporciones humanas (Escala 1:1 en metros)
         this.radius = 0.3;
         this.eyeHeight = 1.50; // Altura de los ojos desde el suelo
+        this.movementSpeed = 8.0; // Velocidad estándar
+        this.allowLateral = true; // Permite moverse con A y D
 
         // 1. CÁMARA (Mundo Visual)
         this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.02, 420);
@@ -23,6 +25,16 @@ export class Player {
         this.listener = new THREE.AudioListener();
         this.camera.add(this.listener);
         soundManager.setListener(this.listener);
+
+        // 1.2 LINTERNA (Mundo Visual)
+        // Aumentamos el ángulo (Math.PI / 3) para hacerla más amplia/redonda
+        // y el penumbra (0.8) para suavizar los bordes. Distancia aumentada a 45.0.
+        this.flashlight = new THREE.SpotLight(0xffffff, 0.0, 20.0, Math.PI / 5, 0.8, 1.0);
+        this.flashlight.position.set(0, 0, 0); // Atada a la cámara
+        this.flashlight.target.position.set(0, 0, -1);
+        this.camera.add(this.flashlight);
+        this.camera.add(this.flashlight.target);
+        this.flashlightEnabled = false;
 
         // 2. CUERPO FÍSICO (Mundo Físico)
         this.body = new CANNON.Body({
@@ -58,7 +70,7 @@ export class Player {
         this.controls.addEventListener('lock', () => setHelpTextVisible(false));
         this.controls.addEventListener('unlock', () => setHelpTextVisible(true));
 
-        // 4. MOVIMIENTO (Teclado)
+        // 4. MOVIMIENTO Y ACCIONES (Teclado)
         this.keys = { w: false, a: false, s: false, d: false };
         this.movementBounds = null;
         this.movementProfile = null;
@@ -66,6 +78,13 @@ export class Player {
         window.addEventListener('keydown', (e) => {
             const key = e.key.toLowerCase();
             if (this.keys.hasOwnProperty(key)) this.keys[key] = true;
+            
+            // Toggle Linterna
+            if (key === 'f') {
+                this.flashlightEnabled = !this.flashlightEnabled;
+                // Intensidad incrementada a 8.0 para que sea más brillante
+                this.flashlight.intensity = this.flashlightEnabled ? 10.0 : 0.0;
+            }
         });
         window.addEventListener('keyup', (e) => {
             const key = e.key.toLowerCase();
@@ -208,7 +227,7 @@ export class Player {
         if (!this.controls.isLocked) return;
 
         // 3. VECTORES DE DIRECCIÓN (WASD)
-        const x = Number(this.keys.d) - Number(this.keys.a);
+        const x = this.allowLateral ? (Number(this.keys.d) - Number(this.keys.a)) : 0;
         const z = Number(this.keys.s) - Number(this.keys.w);
 
         const moveDir = new THREE.Vector3(x, 0, z);
@@ -219,7 +238,7 @@ export class Player {
         euler.setFromQuaternion(this.camera.quaternion);
         moveDir.applyEuler(new THREE.Euler(0, euler.y, 0));
 
-        const speed = 8.0; // Velocidad estándar (m/s)
+        const speed = this.movementSpeed; // Usar propiedad de instancia
 
         // 5. APLICAR VELOCIDAD Y FRICCIÓN (Dejando el eje Y libre para la gravedad)
         if (moveDir.lengthSq() > 0) {

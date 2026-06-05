@@ -9,6 +9,126 @@ let tunnelModel = null;
 const tunnelMaterials = [];
 const tunnelLights = [];
 let scrollTexture = null;
+let flashlightParticles = null;
+let flashlightParticleGeometry = null;
+let flashlightParticleMaterial = null;
+let flashlightParticleTexture = null;
+let flashlightParticleBasePositions = null;
+let flashlightParticleMotion = null;
+let activePlayer = null;
+
+const PARTICLE_COUNT = 460;
+
+function getParticleTexture() {
+  if (flashlightParticleTexture) return flashlightParticleTexture;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 64;
+
+  const ctx = canvas.getContext('2d');
+  const gradient = ctx.createRadialGradient(32, 32, 2, 32, 32, 32);
+  gradient.addColorStop(0.0, 'rgba(255,255,255,1.0)');
+  gradient.addColorStop(0.22, 'rgba(220,238,255,0.95)');
+  gradient.addColorStop(0.58, 'rgba(170,205,255,0.32)');
+  gradient.addColorStop(1.0, 'rgba(120,170,255,0.0)');
+
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  flashlightParticleTexture = new THREE.CanvasTexture(canvas);
+  flashlightParticleTexture.colorSpace = THREE.SRGBColorSpace;
+  return flashlightParticleTexture;
+}
+
+function disposeFlashlightParticles() {
+  if (flashlightParticles?.parent) {
+    flashlightParticles.parent.remove(flashlightParticles);
+  }
+
+  flashlightParticleGeometry?.dispose();
+  flashlightParticleMaterial?.dispose();
+
+  flashlightParticles = null;
+  flashlightParticleGeometry = null;
+  flashlightParticleMaterial = null;
+  flashlightParticleBasePositions = null;
+  flashlightParticleMotion = null;
+}
+
+function createFlashlightParticles(scene, tunnelData) {
+  disposeFlashlightParticles();
+
+  const {
+    primaryAxis,
+    primaryMin,
+    primaryMax,
+    finalCenter,
+    corridorHalfWidth,
+    avgFloorY,
+    ceilingY,
+  } = tunnelData;
+
+  flashlightParticleBasePositions = new Float32Array(PARTICLE_COUNT * 3);
+  flashlightParticleMotion = new Float32Array(PARTICLE_COUNT * 4);
+  const positions = new Float32Array(PARTICLE_COUNT * 3);
+  const minPrimary = primaryMin + 1.2;
+  const maxPrimary = primaryMax - 1.2;
+  const verticalMin = avgFloorY + 0.35;
+  const verticalMax = ceilingY - 0.45;
+
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    const posOffset = i * 3;
+    const motionOffset = i * 4;
+
+    const primaryPos = THREE.MathUtils.lerp(minPrimary, maxPrimary, Math.random());
+    const radius = Math.sqrt(Math.random()) * corridorHalfWidth * 0.92;
+    const angle = Math.random() * Math.PI * 2;
+    const lateral = Math.cos(angle) * radius;
+    const vertical = THREE.MathUtils.lerp(verticalMin, verticalMax, Math.random());
+
+    if (primaryAxis === 'z') {
+      flashlightParticleBasePositions[posOffset] = finalCenter.x + lateral;
+      flashlightParticleBasePositions[posOffset + 1] = vertical;
+      flashlightParticleBasePositions[posOffset + 2] = primaryPos;
+    } else {
+      flashlightParticleBasePositions[posOffset] = primaryPos;
+      flashlightParticleBasePositions[posOffset + 1] = vertical;
+      flashlightParticleBasePositions[posOffset + 2] = finalCenter.z + lateral;
+    }
+
+    positions[posOffset] = flashlightParticleBasePositions[posOffset];
+    positions[posOffset + 1] = flashlightParticleBasePositions[posOffset + 1];
+    positions[posOffset + 2] = flashlightParticleBasePositions[posOffset + 2];
+
+    flashlightParticleMotion[motionOffset] = Math.random() * Math.PI * 2;
+    flashlightParticleMotion[motionOffset + 1] = THREE.MathUtils.lerp(0.18, 0.6, Math.random());
+    flashlightParticleMotion[motionOffset + 2] = THREE.MathUtils.lerp(0.02, 0.09, Math.random());
+    flashlightParticleMotion[motionOffset + 3] = THREE.MathUtils.lerp(0.02, 0.11, Math.random());
+  }
+
+  flashlightParticleGeometry = new THREE.BufferGeometry();
+  flashlightParticleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+  flashlightParticleMaterial = new THREE.PointsMaterial({
+    map: getParticleTexture(),
+    color: 0xcfe8ff,
+    size: 0.075,
+    transparent: true,
+    opacity: 0.0,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    sizeAttenuation: true,
+    alphaTest: 0.02,
+    fog: true,
+  });
+
+  flashlightParticles = new THREE.Points(flashlightParticleGeometry, flashlightParticleMaterial);
+  flashlightParticles.frustumCulled = false;
+  flashlightParticles.visible = false;
+  flashlightParticles.renderOrder = 3;
+  scene.add(flashlightParticles);
+}
 
 function prepareTunnelMaterial(material) {
   const base = Array.isArray(material) ? material[0] : material;
@@ -43,6 +163,7 @@ function prepareTunnelMaterial(material) {
 }
 
 export function loadTunnelScene(scene, physicsWorld, player) {
+  activePlayer = player;
   tunnelMaterials.length = 0;
   tunnelLights.length = 0;
 
@@ -312,6 +433,16 @@ export function loadTunnelScene(scene, physicsWorld, player) {
         });
       }
 
+      createFlashlightParticles(scene, {
+        primaryAxis,
+        primaryMin,
+        primaryMax,
+        finalCenter,
+        corridorHalfWidth,
+        avgFloorY,
+        ceilingY
+      });
+
       // =====================================================
       // SPAWN Y MOVIMIENTO
       // =====================================================
@@ -389,4 +520,35 @@ export function updateScene3(time) {
       ? 8 * (0.75 + 0.25 * Math.sin(time * 5 + phase))
       : 2.5 * (0.7 + 0.3 * Math.cos(time * 3.5 + phase));
   });
+
+  if (!flashlightParticles || !flashlightParticleGeometry || !flashlightParticleMaterial || !activePlayer) return;
+
+  const positions = flashlightParticleGeometry.attributes.position.array;
+
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    const posOffset = i * 3;
+    const motionOffset = i * 4;
+    const baseX = flashlightParticleBasePositions[posOffset];
+    const baseY = flashlightParticleBasePositions[posOffset + 1];
+    const baseZ = flashlightParticleBasePositions[posOffset + 2];
+    const phase = flashlightParticleMotion[motionOffset];
+    const speed = flashlightParticleMotion[motionOffset + 1];
+    const swayX = flashlightParticleMotion[motionOffset + 2];
+    const swayY = flashlightParticleMotion[motionOffset + 3];
+
+    positions[posOffset] = baseX + Math.sin(time * speed + phase) * swayX;
+    positions[posOffset + 1] = baseY + Math.cos(time * speed * 1.15 + phase * 1.7) * swayY;
+    positions[posOffset + 2] = baseZ + Math.sin(time * speed * 0.7 + phase * 0.6) * swayX;
+  }
+
+  flashlightParticleGeometry.attributes.position.needsUpdate = true;
+
+  const targetOpacity = activePlayer.flashlightEnabled ? 0.26 : 0.0;
+  flashlightParticleMaterial.opacity = THREE.MathUtils.lerp(
+    flashlightParticleMaterial.opacity,
+    targetOpacity,
+    0.08
+  );
+
+  flashlightParticles.visible = flashlightParticleMaterial.opacity > 0.015;
 }

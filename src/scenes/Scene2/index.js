@@ -10,11 +10,12 @@ export let redLight, orangeLight;
 
 export function loadRoomScene2(scene, physicsWorld, player) {
   // Luces Base (La posición se ajustará matemáticamente después de cargar la sala)
-  redLight = new THREE.PointLight(0xff2a12, 0.05, 20, 2);
+
+  redLight = new THREE.PointLight(0xff2a12, 0.8, 20, 2);
   redLight.position.set(-3, 5, 1);
   scene.add(redLight);
 
-  orangeLight = new THREE.PointLight(0xff6a18, 0.05, 20, 2);
+  orangeLight = new THREE.PointLight(0xff6a18, 0.6, 20, 2);
   orangeLight.position.set(2.5, 3.75, -2.5);
   scene.add(orangeLight);
 
@@ -101,8 +102,9 @@ export function loadRoomScene2(scene, physicsWorld, player) {
       });
 
       // --- 4. RELOCALIZACIÓN DE LUCES (Relativas a la sala) ---
-      redLight.position.set(finalRoomBox.min.x + 1, finalRoomBox.max.y - 0.5, finalRoomCenter.z);
-      orangeLight.position.set(finalRoomBox.max.x - 1, finalRoomBox.max.y - 0.5, finalRoomCenter.z);
+      // Movemos las luces al centro del pasillo para asegurarnos de que no queden detrás de las paredes
+      redLight.position.set(finalRoomCenter.x, finalRoomBox.max.y - 0.5, finalRoomCenter.z - 5);
+      orangeLight.position.set(finalRoomCenter.x, finalRoomBox.max.y - 0.5, finalRoomCenter.z + 5);
 
       // --- 5. FÍSICAS PERIMETRALES ---
       const w = finalRoomSize.x;
@@ -133,11 +135,27 @@ export function loadRoomScene2(scene, physicsWorld, player) {
 }
 
 export function updateScene2(time) {
-  // Lógica de actualización de la escena 2 si se requiere (por ejemplo, hacer parpadear luces)
+  // Efecto de parpadeo errático (tipo fluorescente roto)
+  // Utilizamos el tiempo y valores aleatorios para crear inestabilidad
+  const isFlickering = Math.random() > 0.85;
+
   if (redLight) {
-    redLight.intensity = 0.05 * (0.8 + 0.2 * Math.sin(time * 4.0));
+    if (isFlickering) {
+      // Apagado o muy tenue durante el parpadeo
+      redLight.intensity = Math.random() > 0.5 ? 0.0 : 0.1;
+    } else {
+      // Pulso normal cuando no parpadea
+      redLight.intensity = 0.8 * (0.8 + 0.2 * Math.sin(time * 4.0));
+    }
   }
+
   if (orangeLight) {
-    orangeLight.intensity = 0.05 * (0.8 + 0.2 * Math.cos(time * 3.0));
+    // La luz naranja parpadea con una probabilidad diferente para no verse sincronizada
+    const orangeFlicker = Math.random() > 0.9;
+    if (orangeFlicker) {
+      orangeLight.intensity = Math.random() > 0.3 ? 0.0 : 0.2;
+    } else {
+      orangeLight.intensity = 0.6 * (0.8 + 0.2 * Math.cos(time * 3.0));
+    }
   }
 }

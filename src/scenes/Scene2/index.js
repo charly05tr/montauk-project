@@ -5,19 +5,34 @@ import { setHelpText } from '../../ui/Overlay/index.js';
 import { ENABLE_SHADOWS } from '../../utils/constants.js';
 import { getMaterialName, tuneHospitalMaterial } from './objects.js';
 import { createStaticBox, createBoxFromMesh, createTrimeshFromMesh } from '../../physics/Collider.js';
+import { soundManager } from '../../core/SoundManager.js';
 
-export let redLight, orangeLight;
+export let whiteLight1, whiteLight2, flashAmbient;
+let isFlickeringActive = false;
+let listenerAdded = false;
 
 export function loadRoomScene2(scene, physicsWorld, player) {
   // Luces Base (La posición se ajustará matemáticamente después de cargar la sala)
 
-  redLight = new THREE.PointLight(0xff2a12, 0.8, 20, 2);
-  redLight.position.set(-3, 5, 1);
-  scene.add(redLight);
+  flashAmbient = new THREE.AmbientLight(0xffffff, 0.0); // Luz ambiental apagada normalmente
+  scene.add(flashAmbient);
 
-  orangeLight = new THREE.PointLight(0xff6a18, 0.6, 20, 2);
-  orangeLight.position.set(2.5, 3.75, -2.5);
-  scene.add(orangeLight);
+  whiteLight1 = new THREE.PointLight(0xffffff, 0.8, 60, 1.5);
+  whiteLight1.position.set(-3, 5, 1);
+  scene.add(whiteLight1);
+
+  whiteLight2 = new THREE.PointLight(0xffffff, 0.6, 60, 1.5);
+  whiteLight2.position.set(2.5, 3.75, -2.5);
+  scene.add(whiteLight2);
+
+  if (!listenerAdded) {
+    window.addEventListener('keydown', (e) => {
+      if (e.key.toLowerCase() === 'l') {
+        isFlickeringActive = !isFlickeringActive;
+      }
+    });
+    listenerAdded = true;
+  }
 
   const gltfLoader = new GLTFLoader(loadingManager);
 
@@ -36,6 +51,9 @@ export function loadRoomScene2(scene, physicsWorld, player) {
       const scaleFactor = targetHeight / rawHeight;
       model.scale.setScalar(scaleFactor);
       model.updateMatrixWorld(true);
+
+      // Play audio
+      soundManager.playAmbient('hospital_ambient', '/sounds/scene2.mp3', true, 0.4);
 
       // --- 2. CENTRADO ABSOLUTO ---
       const scaledBox = new THREE.Box3().setFromObject(model);
@@ -103,8 +121,8 @@ export function loadRoomScene2(scene, physicsWorld, player) {
 
       // --- 4. RELOCALIZACIÓN DE LUCES (Relativas a la sala) ---
       // Movemos las luces al centro del pasillo para asegurarnos de que no queden detrás de las paredes
-      redLight.position.set(finalRoomCenter.x, finalRoomBox.max.y - 0.5, finalRoomCenter.z - 5);
-      orangeLight.position.set(finalRoomCenter.x, finalRoomBox.max.y - 0.5, finalRoomCenter.z + 5);
+      whiteLight1.position.set(finalRoomCenter.x, finalRoomBox.max.y - 0.5, finalRoomCenter.z - 5);
+      whiteLight2.position.set(finalRoomCenter.x, finalRoomBox.max.y - 0.5, finalRoomCenter.z + 5);
 
       // --- 5. FÍSICAS PERIMETRALES ---
       const w = finalRoomSize.x;
@@ -135,27 +153,37 @@ export function loadRoomScene2(scene, physicsWorld, player) {
 }
 
 export function updateScene2(time) {
-  // Efecto de parpadeo errático (tipo fluorescente roto)
-  // Utilizamos el tiempo y valores aleatorios para crear inestabilidad
-  const isFlickering = Math.random() > 0.85;
-
-  if (redLight) {
-    if (isFlickering) {
-      // Apagado o muy tenue durante el parpadeo
-      redLight.intensity = Math.random() > 0.5 ? 0.0 : 0.1;
-    } else {
-      // Pulso normal cuando no parpadea
-      redLight.intensity = 0.8 * (0.8 + 0.2 * Math.sin(time * 4.0));
+  // Efecto masivo estilo Demogorgon
+  if (isFlickeringActive) {
+    const randomVal = Math.random();
+    const isMajorFlash = randomVal > 0.8;
+    const isPitchBlack = randomVal < 0.4;
+    
+    // Parpadeo ambiental para iluminar todo el pasillo de golpe
+    if (flashAmbient) {
+      flashAmbient.intensity = isMajorFlash ? (Math.random() * 0.8 + 0.5) : 0.0;
     }
-  }
 
-  if (orangeLight) {
-    // La luz naranja parpadea con una probabilidad diferente para no verse sincronizada
-    const orangeFlicker = Math.random() > 0.9;
-    if (orangeFlicker) {
-      orangeLight.intensity = Math.random() > 0.3 ? 0.0 : 0.2;
-    } else {
-      orangeLight.intensity = 0.6 * (0.8 + 0.2 * Math.cos(time * 3.0));
+    if (whiteLight1) {
+      if (isPitchBlack) whiteLight1.intensity = 0.0;
+      else if (isMajorFlash) whiteLight1.intensity = Math.random() * 3.0 + 1.0;
+      else whiteLight1.intensity = 0.3;
+    }
+
+    if (whiteLight2) {
+      if (isPitchBlack) whiteLight2.intensity = 0.0;
+      else if (isMajorFlash) whiteLight2.intensity = Math.random() * 3.0 + 1.0;
+      else whiteLight2.intensity = 0.3;
+    }
+  } else {
+    // Estado normal: Luz ambiental apagada, luces de punto con pulso suave
+    if (flashAmbient) flashAmbient.intensity = 0.0;
+    
+    if (whiteLight1) {
+      whiteLight1.intensity = 0.8 * (0.8 + 0.2 * Math.sin(time * 4.0));
+    }
+    if (whiteLight2) {
+      whiteLight2.intensity = 0.6 * (0.8 + 0.2 * Math.cos(time * 3.0));
     }
   }
 }

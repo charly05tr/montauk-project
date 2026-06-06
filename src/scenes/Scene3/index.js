@@ -4,6 +4,12 @@ import { loadingManager, setMainSceneReady } from '../../ui/Loading/index.js';
 import { setHelpText } from '../../ui/Overlay/index.js';
 import { ENABLE_SHADOWS } from '../../utils/constants.js';
 import { createStaticBox } from '../../physics/Collider.js';
+import { eventBus } from '../../utils/eventBus.js';
+
+let sceneManagerInstance = null;
+import('../../core/SceneManager.js').then(({ sceneManager }) => {
+  sceneManagerInstance = sceneManager;
+});
 
 let tunnelModel = null;
 const tunnelMaterials = [];
@@ -16,6 +22,8 @@ let flashlightParticleTexture = null;
 let flashlightParticleBasePositions = null;
 let flashlightParticleMotion = null;
 let activePlayer = null;
+let activePhysicsWorld = null;
+let tunnelData = null;
 
 const PARTICLE_COUNT = 460;
 
@@ -164,6 +172,7 @@ function prepareTunnelMaterial(material) {
 
 export function loadTunnelScene(scene, physicsWorld, player) {
   activePlayer = player;
+  activePhysicsWorld = physicsWorld;
   tunnelMaterials.length = 0;
   tunnelLights.length = 0;
 
@@ -450,6 +459,13 @@ export function loadTunnelScene(scene, physicsWorld, player) {
       // 1. Determinar cuál lado del túnel es el más bajo
       const startsLow = firstY < lastY;
 
+      tunnelData = {
+        primaryAxis,
+        primaryMin,
+        primaryMax,
+        startsLow
+      };
+
       // 2. Spawn en el extremo más bajo
       const spawnOffset = Math.max(5.5, primarySize * 0.12);
       let spawnPrimary, lookAtPrimary, spawnFloorY;
@@ -503,7 +519,8 @@ export function loadTunnelScene(scene, physicsWorld, player) {
       });
 
       setMainSceneReady();
-      setHelpText('Escena 3: Túnel | W/S: Avanzar/Retroceder | F: Linterna | Click para entrar');
+      eventBus.emit('sceneReady', { sceneId: 'scene3' });
+      setHelpText('Túnel | W/S: Avanzar/Retroceder | F: Linterna | Click para entrar');
     },
     undefined,
     (error) => {
@@ -514,6 +531,30 @@ export function loadTunnelScene(scene, physicsWorld, player) {
 }
 
 export function updateScene3(time) {
+  // Detección de fin de túnel para pasar a la Escena 2 (Hospital)
+  if (activePlayer && tunnelData && activePhysicsWorld && sceneManagerInstance) {
+    const playerPos = activePlayer.body.position;
+    const { primaryAxis, primaryMin, primaryMax, startsLow } = tunnelData;
+    const currentPos = playerPos[primaryAxis];
+
+    let reachedEnd = false;
+    if (startsLow) {
+      // Spawn en primaryMin, camina hacia primaryMax
+      if (currentPos > primaryMax - 6.0) {
+        reachedEnd = true;
+      }
+    } else {
+      // Spawn en primaryMax, camina hacia primaryMin
+      if (currentPos < primaryMin + 6.0) {
+        reachedEnd = true;
+      }
+    }
+
+    if (reachedEnd && !sceneManagerInstance.isTransitioning) {
+      sceneManagerInstance.switchSceneWithTransition('scene2', activePhysicsWorld, activePlayer);
+    }
+  }
+
   tunnelLights.forEach((light, index) => {
     const phase = index * 1.3;
     light.intensity = index === 0

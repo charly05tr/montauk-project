@@ -71,7 +71,7 @@ export class Player {
         this.controls.addEventListener('unlock', () => setHelpTextVisible(true));
 
         // 4. MOVIMIENTO Y ACCIONES (Teclado)
-        this.keys = { w: false, a: false, s: false, d: false };
+        this.keys = { w: false, a: false, s: false, d: false, e: false };
         this.movementBounds = null;
         this.movementProfile = null;
 

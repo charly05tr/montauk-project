@@ -3,13 +3,217 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { loadingManager, setMainSceneReady } from '../../ui/Loading/index.js';
 import { setHelpText } from '../../ui/Overlay/index.js';
 import { ENABLE_SHADOWS } from '../../utils/constants.js';
-import { getMaterialName, tuneRoomMaterial, isRoomSurfaceMaterial } from './objects.js';
+import { getMaterialName, tuneRoomMaterial, isRoomSurfaceMaterial, xmasBulbMaterialNames } from './objects.js';
 import { createStaticBox, createBoxFromMesh, createTrimeshFromMesh } from '../../physics/Collider.js';
+import { eventBus } from '../../utils/eventBus.js';
+import { soundManager } from '../../core/SoundManager.js';
+
+let sceneManagerInstance = null;
+import('../../core/SceneManager.js').then(({ sceneManager }) => {
+  sceneManagerInstance = sceneManager;
+});
 
 export const xmasLights = [];
 let redLight, orangeLight;
+let activePlayer = null;
+let activePhysicsWorld = null;
+let finalRoomBox = null;
+
+// --- SISTEMA DE ABECEDARIO INTERACTIVO ---
+// Mapeo de foquitos ordenados espacialmente a letras A-Z
+const alphabetBulbs = [];      // Array de { mesh, worldPos, letter, pointLight }
+let helpBuffer = '';           // Buffer de lo que el usuario ha escrito
+const HELP_WORD = 'help';
+let helpTriggered = false;     // Para evitar disparar la transición múltiples veces
+let activeScene = null;        // Referencia a la escena de Three.js para agregar PointLights
+const activeLights = [];       // PointLights activos que iluminan los foquitos
+
+// Colores vibrantes para las letras iluminadas (estilo Stranger Things)
+const LETTER_LIGHT_COLORS = {
+  h: 0xff2514,  // Rojo intenso
+  e: 0x20c7ff,  // Azul eléctrico
+  l: 0xffe05a,  // Amarillo cálido
+  p: 0xff2514,  // Rojo intenso
+};
+const DEFAULT_LIGHT_COLOR = 0xffe05a;
+
+function cleanupAlphabetState() {
+  helpBuffer = '';
+  helpTriggered = false;
+  // Remover PointLights activos de la escena
+  activeLights.forEach(light => {
+    if (light.parent) light.parent.remove(light);
+  });
+  activeLights.length = 0;
+  alphabetBulbs.length = 0;
+}
+
+/**
+ * Recolecta los nodos de los foquitos del árbol de navidad del modelo,
+ * los ordena espacialmente (3 filas, izquierda a derecha) y los asigna a letras A-Z.
+ */
+function collectAndMapBulbs(model) {
+  alphabetBulbs.length = 0;
+  const bulbParents = [];
+
+  // 1. Recolectar todos los nodos "Plane" que son los foquitos
+  model.traverse((child) => {
+    if (!child.name || !child.name.startsWith('Plane')) return;
+    // Obtener la posición mundial del foquito
+    const worldPos = new THREE.Vector3();
+    child.getWorldPosition(worldPos);
+    bulbParents.push({ node: child, worldPos });
+  });
+
+  if (bulbParents.length === 0) return;
+
+  // 2. Separar en filas usando el eje Y (altura)
+  // Ordenar por Y descendente para obtener las filas de arriba a abajo
+  bulbParents.sort((a, b) => b.worldPos.y - a.worldPos.y);
+
+  // Usar clustering simple por Y para identificar filas
+  const rows = [];
+  let currentRow = [bulbParents[0]];
+  const ROW_THRESHOLD = 0.15; // Si la diferencia en Y es menor a 15cm, misma fila
+
+  for (let i = 1; i < bulbParents.length; i++) {
+    const prevY = currentRow[currentRow.length - 1].worldPos.y;
+    const currY = bulbParents[i].worldPos.y;
+    if (Math.abs(prevY - currY) < ROW_THRESHOLD) {
+      currentRow.push(bulbParents[i]);
+    } else {
+      rows.push(currentRow);
+      currentRow = [bulbParents[i]];
+    }
+  }
+  rows.push(currentRow);
+
+  // 3. Dentro de cada fila, ordenar por Z (eje lateral de la pared)
+  // En este modelo, los foquitos están en la pared Z-negativo,
+  // así que Z más negativo = izquierda visual del jugador
+  rows.forEach(row => {
+    row.sort((a, b) => a.worldPos.z - b.worldPos.z);
+  });
+
+  // 4. Aplanar las filas y tomar los primeros 26 para A-Z
+  const alphabet = 'abcdefghijklmnopqrstuvwxyz';
+  const flatBulbs = rows.flat();
+
+  for (let i = 0; i < Math.min(26, flatBulbs.length); i++) {
+    const bulb = flatBulbs[i];
+    alphabetBulbs.push({
+      node: bulb.node,
+      worldPos: bulb.worldPos.clone(),
+      letter: alphabet[i],
+      pointLight: null, // Se crea cuando se ilumina
+    });
+  }
+
+  console.log(`[ABECEDARIO] Mapeados ${alphabetBulbs.length} foquitos a letras:`,
+    alphabetBulbs.map(b => b.letter.toUpperCase()).join(' '));
+}
+
+/**
+ * Ilumina el foquito correspondiente a una letra específica.
+ */
+function illuminateLetter(letter, scene) {
+  const entry = alphabetBulbs.find(b => b.letter === letter.toLowerCase());
+  if (!entry) return;
+
+  // Si ya tiene luz, no crear otra
+  if (entry.pointLight) return;
+
+  const color = LETTER_LIGHT_COLORS[letter.toLowerCase()] || DEFAULT_LIGHT_COLOR;
+
+  // Crear PointLight brillante en la posición del foquito
+  const light = new THREE.PointLight(color, 8.0, 4.0, 1.5);
+  light.position.copy(entry.worldPos);
+  scene.add(light);
+
+  entry.pointLight = light;
+  activeLights.push(light);
+
+  // También hacer que el mesh del foquito brille (cambiar el material del hijo coloreado)
+  entry.node.traverse((child) => {
+    if (!child.isMesh) return;
+    const matName = child.material?.name || '';
+    if (xmasBulbMaterialNames.includes(matName)) {
+      child.material = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(color),
+        transparent: true,
+        opacity: 1.0,
+        toneMapped: false,
+        name: matName,
+      });
+    }
+  });
+}
+
+/**
+ * Maneja el input del teclado para el sistema del abecedario.
+ * Se llama desde el listener de keydown.
+ */
+function onAlphabetKeyDown(e) {
+  // Solo funcionar cuando estamos en Scene 1 y no en transición
+  if (!sceneManagerInstance || sceneManagerInstance.activeSceneId !== 'scene1') return;
+  if (helpTriggered) return;
+  if (e.key.length !== 1) return;
+
+  const key = e.key.toLowerCase();
+  if (key < 'a' || key > 'z') return; // Solo letras
+
+  // Verificar si la letra coincide con la siguiente esperada en "help"
+  const nextExpected = HELP_WORD[helpBuffer.length];
+
+  if (key === nextExpected) {
+    helpBuffer += key;
+
+    // Iluminar la letra en el abecedario de la pared
+    if (activeScene) {
+      illuminateLetter(key, activeScene);
+    }
+
+    // Mostrar progreso
+    const progress = HELP_WORD.split('').map((ch, i) => {
+      if (i < helpBuffer.length) return ch.toUpperCase();
+      return '_';
+    }).join(' ');
+    setHelpText(progress);
+
+    // ¿Se completó la palabra?
+    if (helpBuffer === HELP_WORD) {
+      helpTriggered = true;
+      setHelpText('H E L P');
+
+      // Esperar un momento dramático antes de la transición
+      setTimeout(() => {
+        if (sceneManagerInstance && activePhysicsWorld && activePlayer) {
+          soundManager.playDoorOpenSound();
+          sceneManagerInstance.switchSceneWithTransition('scene3', activePhysicsWorld, activePlayer);
+        }
+      }, 1500);
+    }
+  } else {
+    // Letra incorrecta: reiniciar el progreso y apagar las luces
+    helpBuffer = '';
+    activeLights.forEach(light => {
+      if (light.parent) light.parent.remove(light);
+    });
+    activeLights.length = 0;
+    alphabetBulbs.forEach(b => { b.pointLight = null; });
+    setHelpText('Click para entrar | WASD moverte | Esc salir');
+  }
+}
+
+// Registrar el listener global (se activa sólo cuando estamos en Scene 1)
+window.addEventListener('keydown', onAlphabetKeyDown);
 
 export function loadRoom(scene, physicsWorld, player) {
+  activePlayer = player;
+  activePhysicsWorld = physicsWorld;
+  activeScene = scene;
+  cleanupAlphabetState();
+
   // Luces Base (La posición se ajustará matemáticamente después de cargar la sala)
   redLight = new THREE.PointLight(0xff2a12, 0.05, 20, 2)
   redLight.position.set(-3, 5, 1)
@@ -50,7 +254,7 @@ export function loadRoom(scene, physicsWorld, player) {
       scene.add(model);
 
       // Caja definitiva para armar las paredes y físicas perimetrales
-      const finalRoomBox = new THREE.Box3().setFromObject(model);
+      finalRoomBox = new THREE.Box3().setFromObject(model);
       const finalRoomSize = finalRoomBox.getSize(new THREE.Vector3());
       const finalRoomCenter = finalRoomBox.getCenter(new THREE.Vector3());
 
@@ -101,6 +305,9 @@ export function loadRoom(scene, physicsWorld, player) {
         createBoxFromMesh(physicsWorld, child);
       });
 
+      // --- 3.5. RECOLECTAR Y MAPEAR FOQUITOS DEL ABECEDARIO ---
+      collectAndMapBulbs(model);
+
       // --- 4. RELOCALIZACIÓN DE LUCES (Relativas a la sala) ---
       redLight.position.set(finalRoomBox.min.x + 1, finalRoomBox.max.y - 0.5, finalRoomCenter.z);
       orangeLight.position.set(finalRoomBox.max.x - 1, finalRoomBox.max.y - 0.5, finalRoomCenter.z);
@@ -132,6 +339,7 @@ export function loadRoom(scene, physicsWorld, player) {
       player.setPosition(finalRoomCenter.x, finalRoomBox.min.y + 2.0, finalRoomCenter.z);
 
       setMainSceneReady();
+      eventBus.emit('sceneReady', { sceneId: 'scene1' });
       setHelpText('Click para entrar | WASD moverte | Esc salir');
     },
     undefined,
@@ -146,5 +354,10 @@ export function updateScene1(time) {
   xmasLights.forEach((light) => {
     if (!light.userData.active) return;
     light.intensity = light.userData.baseIntensity * (0.75 + 0.25 * Math.sin(time * 3.5 + light.userData.phase));
+  });
+
+  // Animar suavemente los PointLights de las letras iluminadas (pulso sutil)
+  activeLights.forEach((light, i) => {
+    light.intensity = 6.0 + 2.0 * Math.sin(time * 4.0 + i * 1.5);
   });
 }

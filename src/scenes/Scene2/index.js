@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { loadingManager, setMainSceneReady } from '../../ui/Loading/index.js';
+import { eventBus } from '../../utils/eventBus.js';
 import { setHelpText } from '../../ui/Overlay/index.js';
 import { ENABLE_SHADOWS } from '../../utils/constants.js';
 import { getMaterialName, tuneHospitalMaterial } from './objects.js';
@@ -122,6 +123,7 @@ export function loadRoomScene2(scene, physicsWorld, player) {
       player.setPosition(finalRoomCenter.x, finalRoomBox.min.y + 2.0, finalRoomCenter.z);
 
       setMainSceneReady();
+      eventBus.emit('sceneReady', { sceneId: 'scene2' });
       setHelpText('Escena 2: Hospital | Click para entrar | WASD moverte | Escribe "HELP" para volver');
     },
     undefined,

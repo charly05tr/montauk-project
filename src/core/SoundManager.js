@@ -167,6 +167,87 @@ class SoundManager {
         this.positionalSounds.clear();
         console.log('SoundManager: Todos los sonidos posicionales detenidos.');
     }
+
+    /**
+     * Intenta reproducir el archivo de sonido de la puerta. 
+     * Si no existe o falla la carga, sintetiza el sonido mediante la Web Audio API.
+     */
+    playDoorOpenSound() {
+        this.resumeContext();
+        const path = '/sounds/door_open.mp3';
+        this.loadBuffer(path)
+            .then(() => {
+                this.playAmbient('door_open', path, false, 0.8);
+            })
+            .catch(() => {
+                console.log('SoundManager: Archivo /sounds/door_open.mp3 no encontrado. Generando sonido sintetizado...');
+                this.playSynthesizedDoorOpen();
+            });
+    }
+
+    /**
+     * Genera un efecto de sonido analógico retro (chirrido de madera y portazo)
+     * usando la Web Audio API directamente.
+     */
+    playSynthesizedDoorOpen() {
+        const ctx = THREE.AudioContext.getContext();
+        if (ctx.state === 'suspended') ctx.resume();
+
+        const now = ctx.currentTime;
+
+        // 1. Chirrido (Fricción de la madera al abrirse)
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(70, now);
+        
+        // Simular rugosidad de la madera variando aleatoriamente la frecuencia
+        for (let i = 0; i < 25; i++) {
+            const t = now + i * 0.04;
+            osc.frequency.setValueAtTime(60 + Math.random() * 35, t);
+        }
+
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(900, now);
+        filter.Q.setValueAtTime(2.5, now);
+
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.18, now + 0.15);
+        gain.gain.linearRampToValueAtTime(0.0, now + 0.95);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now);
+        osc.stop(now + 1.0);
+
+        // 2. Portazo/Golpe sordo (Slam) a los 0.75s
+        const slamTime = now + 0.75;
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        const filter2 = ctx.createBiquadFilter();
+
+        osc2.type = 'triangle';
+        osc2.frequency.setValueAtTime(100, slamTime);
+        osc2.frequency.exponentialRampToValueAtTime(0.01, slamTime + 0.35);
+
+        filter2.type = 'lowpass';
+        filter2.frequency.setValueAtTime(130, slamTime);
+
+        gain2.gain.setValueAtTime(0, now);
+        gain2.gain.setValueAtTime(0.35, slamTime);
+        gain2.gain.exponentialRampToValueAtTime(0.01, slamTime + 0.35);
+
+        osc2.connect(filter2);
+        filter2.connect(gain2);
+        gain2.connect(ctx.destination);
+
+        osc2.start(slamTime);
+        osc2.stop(slamTime + 0.4);
+    }
 }
 
 export const soundManager = new SoundManager();

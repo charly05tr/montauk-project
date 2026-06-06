@@ -94,7 +94,7 @@ function animate() {
   updateGlobalLights(player.camera)
 
   // Actualizar lógica de la escena actual
-  sceneManager.updateCurrentScene(clock.elapsedTime);
+  sceneManager.updateCurrentScene(clock.elapsedTime, player, dt);
 
   // Renderizar frame con Post-procesado
   composer.render()

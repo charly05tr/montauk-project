@@ -41,13 +41,13 @@ class SceneManager {
         return this.currentScene;
     }
 
-    updateCurrentScene(time) {
+    updateCurrentScene(time, player, dt) {
         if (this.activeSceneId === 'scene1') {
-            updateScene1(time);
+            updateScene1(time, player, dt);
         } else if (this.activeSceneId === 'scene2') {
-            updateScene2(time);
+            updateScene2(time, player, dt);
         } else if (this.activeSceneId === 'scene3') {
-            updateScene3(time);
+            updateScene3(time, player, dt);
         }
     }
 

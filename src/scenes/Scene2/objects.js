@@ -41,15 +41,25 @@ export function tuneHospitalMaterial(material) {
 
   // 2. Lógica específica para vidrios/cristales si los hay
   if (name.includes('glass') || name.includes('vidrio') || name.includes('transparente')) {
-    src.transparent = true;
-    src.opacity = 0.4;
-    src.depthWrite = false;
+    // TEMPORARY FIX: Make glass opaque to see if walls were accidentally treated as glass
+    src.transparent = false;
+    src.opacity = 1.0;
+    src.depthWrite = true;
     src.side = THREE.DoubleSide;
     finalMaterial = optimizeMaterial(src);
   } else {
     // 3. Modificaciones Base para ambiente oscuro y tétrico
     if (src.color) src.color.multiplyScalar(0.6); // Oscurecer un poco para dar tensión
     if (src.emissive) src.emissive.multiplyScalar(0.2);
+
+    // Explicitly disable transparency for non-glass materials
+    src.transparent = false;
+    src.opacity = 1.0;
+    src.depthWrite = true;
+    src.depthTest = true;
+    src.alphaTest = 0;
+    src.transmission = 0;
+    src.blending = THREE.NormalBlending;
 
     // Ajustar materiales estándar para que respondan correctamente sin envMap
     if (src.isMeshStandardMaterial) {
@@ -65,6 +75,10 @@ export function tuneHospitalMaterial(material) {
         side: THREE.FrontSide,
         name: src.name || '',
       });
+      // Ensure the new Lambert material is also opaque
+      finalMaterial.transparent = false;
+      finalMaterial.opacity = 1.0;
+      finalMaterial.depthWrite = true;
       finalMaterial = optimizeMaterial(finalMaterial);
     } else {
       src.side = THREE.DoubleSide;

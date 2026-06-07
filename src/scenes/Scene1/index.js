@@ -173,6 +173,11 @@ function onAlphabetKeyDown(e) {
   if (key === nextExpected) {
     helpBuffer += key;
 
+    // Reproducir timbrado del teléfono que incrementa en volumen
+    soundManager.stopAmbient('phone');
+    const ringVol = 0.35 + (helpBuffer.length * 0.15); // H (0.50), E (0.65), L (0.80), P (0.95)
+    soundManager.playAmbient('phone', '/sounds/phone_ringing.mp3', false, ringVol);
+
     // Iluminar la letra en el abecedario de la pared
     if (activeScene) {
       illuminateLetter(key, activeScene);
@@ -193,12 +198,19 @@ function onAlphabetKeyDown(e) {
       // Esperar un momento dramático antes de la transición
       setTimeout(() => {
         if (sceneManagerInstance && activePhysicsWorld && activePlayer) {
+          soundManager.stopAmbient('phone');
           soundManager.playDoorOpenSound();
           sceneManagerInstance.switchSceneWithTransition('scene3', activePhysicsWorld, activePlayer);
         }
       }, 1500);
     }
   } else {
+    // Si tenía letras correctas y se equivocó, reproducir un timbrado fuerte como jump scare
+    if (helpBuffer.length > 0) {
+      soundManager.stopAmbient('phone');
+      soundManager.playAmbient('phone', '/sounds/phone_ringing.mp3', false, 1.2);
+    }
+
     // Letra incorrecta: reiniciar el progreso y apagar las luces
     helpBuffer = '';
     activeLights.forEach(light => {

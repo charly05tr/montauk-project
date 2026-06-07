@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { loadingManager, setMainSceneReady } from '../../ui/Loading/index.js';
-import { setHelpText } from '../../ui/Overlay/index.js';
+import { setHelpText, setFloatingHelp } from '../../ui/Overlay/index.js';
 import { ENABLE_SHADOWS } from '../../utils/constants.js';
 import { getMaterialName, tuneSchoolMaterial } from './objects.js';
 import { createStaticBox, createBoxFromMesh, createTrimeshFromMesh } from '../../physics/Collider.js';
@@ -150,12 +150,13 @@ export function loadSchoolScene(scene, physicsWorld, player) {
 
       setMainSceneReady();
       eventBus.emit('sceneReady', { sceneId: 'scene4' });
-      setHelpText('Escena 4: Escuela | Click para entrar | WASD moverte | Escribe "HELP" para volver');
+      setFloatingHelp('<b>Scene: The Origins (Hawking lab`s school)</b><br><br><b>Controls:</b><br>- Click to enter<br>- WASD to move<br><br><b>Exit:</b><br>- Press ESC to unlock pointer<br>- Type "HELP" to teleport');
+      setHelpText('');
     },
     undefined,
     (error) => {
       console.error(error);
-      setHelpText('No se pudo cargar el modelo de la escuela.');
+      setHelpText('Failed to load school model.');
     }
   );
 }

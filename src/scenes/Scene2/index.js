@@ -3,7 +3,7 @@ import * as CANNON from 'cannon-es';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { loadingManager, setMainSceneReady } from '../../ui/Loading/index.js';
 import { eventBus } from '../../utils/eventBus.js';
-import { setHelpText } from '../../ui/Overlay/index.js';
+import { setHelpText, setFloatingHelp } from '../../ui/Overlay/index.js';
 import { ENABLE_SHADOWS } from '../../utils/constants.js';
 import { getMaterialName, tuneHospitalMaterial } from './objects.js';
 import { createStaticBox, createBoxFromMesh, createTrimeshFromMesh } from '../../physics/Collider.js';
@@ -265,12 +265,13 @@ export function loadRoomScene2(scene, physicsWorld, player) {
 
       setMainSceneReady();
       eventBus.emit('sceneReady', { sceneId: 'scene2' });
-      setHelpText('Escena 2: Hospital | Click para entrar | WASD moverte | L para Demogorgon flash | Escribe "HELP" para volver');
+      setFloatingHelp('<b>Scene: Hawking Lab </b><br><br><b>Controls:</b><br>- Click to enter<br>- WASD to move<br>- Press "L" to toggle Demogorgon flash<br><br><b>Exit:</b><br>- Press ESC to unlock pointer<br>- Find the portal to teleport yourself to the next scene');
+      setHelpText('');
     },
     undefined,
     (error) => {
       console.error(error);
-      setHelpText('No se pudo cargar el modelo del hospital.');
+      setHelpText('Failed to load hospital model.');
     }
   );
 }

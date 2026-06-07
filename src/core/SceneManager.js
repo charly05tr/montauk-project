@@ -61,7 +61,7 @@ class SceneManager {
     switchScene(sceneId, physicsWorld, player) {
         if (sceneId === this.activeSceneId) return;
 
-        setHelpText('Cargando nueva escena...');
+        setHelpText('Loading new scene...');
         this.previousSceneId = this.activeSceneId;
         this.activeSceneId = sceneId;
         player.setMovementBounds?.(null);

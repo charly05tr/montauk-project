@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { loadingManager, setMainSceneReady } from '../../ui/Loading/index.js';
-import { setHelpText } from '../../ui/Overlay/index.js';
+import { setHelpText, setFloatingHelp } from '../../ui/Overlay/index.js';
 import { ENABLE_SHADOWS } from '../../utils/constants.js';
 import { getMaterialName, tuneRoomMaterial, isRoomSurfaceMaterial, xmasBulbMaterialNames } from './objects.js';
 import { createStaticBox, createBoxFromMesh, createTrimeshFromMesh } from '../../physics/Collider.js';
@@ -218,7 +218,8 @@ function onAlphabetKeyDown(e) {
     });
     activeLights.length = 0;
     alphabetBulbs.forEach(b => { b.pointLight = null; });
-    setHelpText('Click para entrar | WASD moverte | Esc salir');
+    setFloatingHelp('<b>Scene: The Anomaly (Joyce Byers`s House)</b><br><br><b>Controls:</b><br>- Click to enter<br>- WASD to move<br><br><b>Exit:</b><br>- Press ESC to unlock pointer<br>- Type "HELP" to teleport');
+    setHelpText('');
   }
 }
 
@@ -357,12 +358,13 @@ export function loadRoom(scene, physicsWorld, player) {
 
       setMainSceneReady();
       eventBus.emit('sceneReady', { sceneId: 'scene1' });
-      setHelpText('Click para entrar | WASD moverte | Esc salir');
+      setFloatingHelp('<b>Scene 1: The Anomaly</b><br><br><b>Controls:</b><br>- Click to enter<br>- WASD to move<br><br><b>Exit:</b><br>- Press ESC to unlock pointer<br>- Type "HELP" to teleport');
+      setHelpText('');
     },
     undefined,
     (error) => {
       console.error(error);
-      setHelpText('No se pudo cargar el modelo de la sala.');
+      setHelpText('Failed to load room model.');
     }
   );
 }

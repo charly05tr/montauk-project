@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { loadingManager, setMainSceneReady } from '../../ui/Loading/index.js';
-import { setHelpText } from '../../ui/Overlay/index.js';
+import { setHelpText, setFloatingHelp } from '../../ui/Overlay/index.js';
 import { ENABLE_SHADOWS } from '../../utils/constants.js';
 import { createStaticBox } from '../../physics/Collider.js';
 import { eventBus } from '../../utils/eventBus.js';
@@ -522,7 +522,8 @@ export function loadTunnelScene(scene, physicsWorld, player) {
 
       setMainSceneReady();
       eventBus.emit('sceneReady', { sceneId: 'scene3' });
-      setHelpText('Túnel | W/S: Avanzar/Retroceder | F: Linterna | Click para entrar');
+      setFloatingHelp('<b>Hawkins Tunnel</b><br><br><b>Controls:</b><br>- Click to enter<br>- W/S to move forward/backward<br>- F to toggle flashlight<br><br><b>Exit:</b><br>- Press ESC to unlock pointer<br>- GO through the tunnel');
+      setHelpText('');
       
       // Reproducir sonido ambiente del túnel
       soundManager.playAmbient('tunnel_ambient', '/sounds/scene3song.mp3', true, 0.45);
@@ -530,7 +531,7 @@ export function loadTunnelScene(scene, physicsWorld, player) {
     undefined,
     (error) => {
       console.error(error);
-      setHelpText('No se pudo cargar el túnel.');
+      setHelpText('Failed to load tunnel model.');
     }
   );
 }

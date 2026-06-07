@@ -12,11 +12,12 @@ export class Player {
         // Configuraciones de proporciones humanas (Escala 1:1 en metros)
         this.radius = 0.3;
         this.eyeHeight = 1.50; // Altura de los ojos desde el suelo
-        this.movementSpeed = 8.0; // Velocidad estándar
+        this.movementSpeed = 8.0; // Velocidad estándar (8.0 m/s)
         this.allowLateral = true; // Permite moverse con A y D
 
         // 1. CÁMARA (Mundo Visual)
-        this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.02, 420);
+        // Aumentamos el FOV de 60 a 80 para un lente más angular que dé mayor percepción de espacio y amplitud
+        this.camera = new THREE.PerspectiveCamera(80, window.innerWidth / window.innerHeight, 0.02, 420);
         if (this.scene) {
             this.scene.add(this.camera);
         }
@@ -35,7 +36,6 @@ export class Player {
         this.camera.add(this.flashlight);
         this.camera.add(this.flashlight.target);
         this.flashlightEnabled = false;
-
         // 2. CUERPO FÍSICO (Mundo Físico)
         this.body = new CANNON.Body({
             mass: 75,
@@ -59,6 +59,8 @@ export class Player {
 
         // 3. CONTROLES DE VISIÓN (Mouse)
         this.controls = new PointerLockControls(this.camera, document.body);
+        this.controls.pointerSpeed = 0.70; // Suaviza la sensibilidad del ratón (antes era 1.0)
+        this.speed = 8.0; // Velocidad de caminata estándar (m/s)
 
         document.body.addEventListener('click', () => {
             soundManager.resumeContext();
@@ -208,6 +210,10 @@ export class Player {
     update() {
         this.enforceMovementBounds();
 
+        // Forzar rotación fija y vertical para evitar inclinaciones o volteretas físicas (ponerse de cabeza)
+        this.body.quaternion.set(0, 0, 0, 1);
+        this.body.angularVelocity.set(0, 0, 0);
+
         // 1. SINCRONIZACIÓN VISUAL (Ejes X y Z atados sin input lag)
         this.camera.position.x = this.body.position.x;
         this.camera.position.z = this.body.position.z;
@@ -241,7 +247,7 @@ export class Player {
         euler.setFromQuaternion(this.camera.quaternion);
         moveDir.applyEuler(new THREE.Euler(0, euler.y, 0));
 
-        const speed = this.movementSpeed; // Usar propiedad de instancia
+        const speed = this.movementSpeed; // Usar propiedad de instancia (velocidad controlada de 4.5 m/s)
 
         // 5. APLICAR VELOCIDAD Y FRICCIÓN (Dejando el eje Y libre para la gravedad)
         if (moveDir.lengthSq() > 0) {

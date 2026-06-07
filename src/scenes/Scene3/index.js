@@ -556,7 +556,8 @@ export function updateScene3(time, player, dt) {
     }
 
     if (reachedEnd && !sceneManagerInstance.isTransitioning) {
-      sceneManagerInstance.switchSceneWithTransition('scene2', activePhysicsWorld, activePlayer);
+      const nextScene = sceneManagerInstance.previousSceneId === 'scene2' ? 'scene4' : 'scene2';
+      sceneManagerInstance.switchSceneWithTransition(nextScene, activePhysicsWorld, activePlayer);
     }
   }
 

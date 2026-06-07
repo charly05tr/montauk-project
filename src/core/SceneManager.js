@@ -55,7 +55,6 @@ class SceneManager {
         } else if (this.activeSceneId === 'scene4') {
             updateScene4(time);
         }
-        }
     }
 
     switchScene(sceneId, physicsWorld, player) {

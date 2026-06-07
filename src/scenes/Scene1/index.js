@@ -162,6 +162,11 @@ function onAlphabetKeyDown(e) {
   const key = e.key.toLowerCase();
   if (key < 'a' || key > 'z') return; // Solo letras
 
+  // Reproducir sonido de tecla clic solo para las letras 'h', 'e', 'l', 'p'
+  if (['h', 'e', 'l', 'p'].includes(key)) {
+    soundManager.playKeyboardSlice('/sounds/keyboard.mp3', 0.8);
+  }
+
   // Verificar si la letra coincide con la siguiente esperada en "help"
   const nextExpected = HELP_WORD[helpBuffer.length];
 

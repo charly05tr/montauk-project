@@ -5,6 +5,7 @@ import { setHelpText } from '../../ui/Overlay/index.js';
 import { ENABLE_SHADOWS } from '../../utils/constants.js';
 import { createStaticBox } from '../../physics/Collider.js';
 import { eventBus } from '../../utils/eventBus.js';
+import { soundManager } from '../../core/SoundManager.js';
 
 let sceneManagerInstance = null;
 import('../../core/SceneManager.js').then(({ sceneManager }) => {
@@ -24,6 +25,7 @@ let flashlightParticleMotion = null;
 let activePlayer = null;
 let activePhysicsWorld = null;
 let tunnelData = null;
+let footstepTimer = 0.55;
 
 const PARTICLE_COUNT = 460;
 
@@ -521,6 +523,9 @@ export function loadTunnelScene(scene, physicsWorld, player) {
       setMainSceneReady();
       eventBus.emit('sceneReady', { sceneId: 'scene3' });
       setHelpText('Túnel | W/S: Avanzar/Retroceder | F: Linterna | Click para entrar');
+      
+      // Reproducir sonido ambiente del túnel
+      soundManager.playAmbient('tunnel_ambient', '/sounds/scene3song.mp3', true, 0.45);
     },
     undefined,
     (error) => {
@@ -530,7 +535,7 @@ export function loadTunnelScene(scene, physicsWorld, player) {
   );
 }
 
-export function updateScene3(time) {
+export function updateScene3(time, player, dt) {
   // Detección de fin de túnel para pasar a la Escena 2 (Hospital)
   if (activePlayer && tunnelData && activePhysicsWorld && sceneManagerInstance) {
     const playerPos = activePlayer.body.position;
@@ -552,6 +557,20 @@ export function updateScene3(time) {
 
     if (reachedEnd && !sceneManagerInstance.isTransitioning) {
       sceneManagerInstance.switchSceneWithTransition('scene2', activePhysicsWorld, activePlayer);
+    }
+  }
+
+  // Reproducción dinámica de pasos sincronizada con el movimiento
+  if (player && player.controls && player.controls.isLocked && dt) {
+    const isMoving = player.keys.w || player.keys.s;
+    if (isMoving) {
+      footstepTimer += dt;
+      if (footstepTimer >= 0.58) { // Intervalo de pasos (580ms)
+        soundManager.playFootstepSlice('/sounds/steps.mp3', 0.45);
+        footstepTimer = 0;
+      }
+    } else {
+      footstepTimer = 0.58; // Siguiente paso sonará de inmediato al empezar a caminar
     }
   }
 

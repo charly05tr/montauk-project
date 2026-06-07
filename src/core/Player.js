@@ -84,6 +84,9 @@ export class Player {
                 this.flashlightEnabled = !this.flashlightEnabled;
                 // Intensidad incrementada a 8.0 para que sea más brillante
                 this.flashlight.intensity = this.flashlightEnabled ? 10.0 : 0.0;
+                
+                // Reproducir clic de teclado
+                soundManager.playKeyboardSlice('/sounds/keyboard.mp3', 0.8);
             }
         });
         window.addEventListener('keyup', (e) => {

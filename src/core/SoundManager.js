@@ -7,6 +7,8 @@ class SoundManager {
         this.audioBuffers = new Map(); // Cache de buffers (URL -> AudioBuffer)
         this.ambientSounds = new Map(); // Sonidos de ambiente activos (key -> THREE.Audio)
         this.positionalSounds = new Map(); // Sonidos posicionales activos (key -> { sound: THREE.PositionalAudio, mesh: THREE.Object3D })
+        this.footstepCache = null; // Cache para los tiempos de pasos recortados
+        this.keyboardCache = null; // Cache para los tiempos de teclado recortados
     }
 
     setListener(listener) {
@@ -247,6 +249,232 @@ class SoundManager {
 
         osc2.start(slamTime);
         osc2.stop(slamTime + 0.4);
+    }
+
+    /**
+     * Analiza el buffer de audio para detectar picos de energía que correspondan a pasos.
+     * Esto automatiza el recorte de cualquier archivo de pasos (como steps.mp3 de 8s).
+     */
+    detectFootsteps(audioBuffer) {
+        const channelData = audioBuffer.getChannelData(0); // Usar el canal izquierdo
+        const sampleRate = audioBuffer.sampleRate;
+        const length = channelData.length;
+
+        // 1. Encontrar el pico absoluto de amplitud para establecer un umbral inteligente
+        let maxVal = 0;
+        for (let i = 0; i < length; i += 15) {
+            const val = Math.abs(channelData[i]);
+            if (val > maxVal) maxVal = val;
+        }
+
+        // Si es extremadamente silencioso, usar un umbral por defecto mínimo
+        const threshold = Math.max(0.015, maxVal * 0.32);
+        const minDistanceSamples = sampleRate * 0.42; // Mínimo 420ms entre pasos
+        const windowSize = Math.floor(sampleRate * 0.05); // Ventana de 50ms para máximos locales
+
+        const peakIndices = [];
+
+        for (let i = 0; i < length; i += 5) {
+            const val = Math.abs(channelData[i]);
+            if (val > threshold) {
+                // Verificar si es un pico local en su entorno
+                let isLocalMax = true;
+                const start = Math.max(0, i - windowSize);
+                const end = Math.min(length, i + windowSize);
+                for (let j = start; j < end; j += 5) {
+                    if (Math.abs(channelData[j]) > val) {
+                        isLocalMax = false;
+                        break;
+                    }
+                }
+
+                if (isLocalMax) {
+                    // Verificar separación temporal con el paso anterior
+                    if (peakIndices.length === 0 || (i - peakIndices[peakIndices.length - 1]) > minDistanceSamples) {
+                        peakIndices.push(i);
+                    }
+                }
+            }
+        }
+
+        // Convertir muestras a segundos
+        let times = peakIndices.map(idx => idx / sampleRate);
+        
+        console.log(`[SoundManager] Análisis de pasos completado. Se detectaron ${times.length} pasos en:`, times);
+
+        // Fallback en caso de que la detección falle o el audio sea plano
+        if (times.length === 0) {
+            const duration = audioBuffer.duration;
+            for (let t = 0.2; t < duration - 0.5; t += 0.7) {
+                times.push(t);
+            }
+            console.log('[SoundManager] Fallback: Usando intervalos regulares de pasos:', times);
+        }
+
+        return times;
+    }
+
+    /**
+     * Reproduce una rodaja (slice) recortada de steps.mp3 correspondiente al siguiente paso en el ciclo.
+     */
+    async playFootstepSlice(path, volume = 0.5) {
+        this.resumeContext();
+
+        let buffer;
+        try {
+            buffer = await this.loadBuffer(path);
+        } catch (err) {
+            console.error('[SoundManager] Error al cargar los pasos para reproducción recortada:', err);
+            return;
+        }
+
+        // Si aún no hemos analizado y extraído los pasos de este archivo, lo hacemos ahora
+        if (!this.footstepCache) {
+            this.footstepCache = {
+                times: this.detectFootsteps(buffer),
+                index: 0
+            };
+        }
+
+        const cache = this.footstepCache;
+        if (cache.times.length === 0) return;
+
+        // Obtener el tiempo del paso actual
+        const peakTime = cache.times[cache.index];
+
+        // Avanzar el índice de forma circular
+        cache.index = (cache.index + 1) % cache.times.length;
+
+        // Configurar nodos de Web Audio API para la reproducción
+        const ctx = THREE.AudioContext.getContext();
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+
+        // Recortamos la porción alrededor del pico
+        // Empezamos un poco antes (70ms) para captar el ataque sutil del paso
+        const startOffset = Math.max(0, peakTime - 0.07);
+        // Duración de la rodaja para un paso (aproximadamente 400ms)
+        const duration = 0.40;
+
+        const gainNode = ctx.createGain();
+        gainNode.gain.setValueAtTime(volume, ctx.currentTime);
+        // Fade out rápido al final del paso para evitar clics de audio abruptos
+        gainNode.gain.exponentialRampToValueAtTime(0.005, ctx.currentTime + duration - 0.04);
+
+        source.connect(gainNode);
+        gainNode.connect(ctx.destination);
+
+        source.start(0, startOffset, duration);
+    }
+
+    /**
+     * Analiza el buffer de audio para detectar picos de energía cortos correspondientes a clics de teclado.
+     */
+    detectKeyboardClicks(audioBuffer) {
+        const channelData = audioBuffer.getChannelData(0); // Canal izquierdo
+        const sampleRate = audioBuffer.sampleRate;
+        const length = channelData.length;
+
+        // Encontrar pico de amplitud absoluto
+        let maxVal = 0;
+        for (let i = 0; i < length; i += 10) {
+            const val = Math.abs(channelData[i]);
+            if (val > maxVal) maxVal = val;
+        }
+
+        // Umbral adaptativo muy bajo porque los clics de teclado suelen ser breves y pueden ser suaves
+        const threshold = Math.max(0.008, maxVal * 0.20);
+        const minDistanceSamples = sampleRate * 0.08; // Mínimo 80ms entre clics (tecleado rápido)
+        const windowSize = Math.floor(sampleRate * 0.015); // Ventana de 15ms para máximos locales
+
+        const peakIndices = [];
+
+        for (let i = 0; i < length; i += 2) { // Mayor resolución temporal (paso de 2 en 2)
+            const val = Math.abs(channelData[i]);
+            if (val > threshold) {
+                let isLocalMax = true;
+                const start = Math.max(0, i - windowSize);
+                const end = Math.min(length, i + windowSize);
+                for (let j = start; j < end; j += 2) {
+                    if (Math.abs(channelData[j]) > val) {
+                        isLocalMax = false;
+                        break;
+                    }
+                }
+
+                if (isLocalMax) {
+                    if (peakIndices.length === 0 || (i - peakIndices[peakIndices.length - 1]) > minDistanceSamples) {
+                        peakIndices.push(i);
+                    }
+                }
+            }
+        }
+
+        // Convertir muestras a segundos
+        let times = peakIndices.map(idx => idx / sampleRate);
+        console.log(`[SoundManager] Análisis de teclado completado. Se detectaron ${times.length} clics en:`, times);
+
+        // Fallback si no se detectan picos
+        if (times.length === 0) {
+            const duration = audioBuffer.duration;
+            for (let t = 0.05; t < duration; t += 0.15) {
+                times.push(t);
+            }
+            console.log('[SoundManager] Fallback: Usando intervalos regulares para clics de teclado:', times);
+        }
+
+        return times;
+    }
+
+    /**
+     * Reproduce una rodaja (slice) recortada de keyboard.mp3 correspondiente al siguiente clic en el ciclo.
+     */
+    async playKeyboardSlice(path, volume = 0.5) {
+        this.resumeContext();
+
+        let buffer;
+        try {
+            buffer = await this.loadBuffer(path);
+        } catch (err) {
+            console.error('[SoundManager] Error al cargar el sonido de teclado para reproducción recortada:', err);
+            return;
+        }
+
+        if (!this.keyboardCache) {
+            this.keyboardCache = {
+                times: this.detectKeyboardClicks(buffer),
+                index: 0
+            };
+        }
+
+        const cache = this.keyboardCache;
+        if (cache.times.length === 0) return;
+
+        // Obtener el tiempo del clic actual
+        const peakTime = cache.times[cache.index];
+
+        // Avanzar el índice de forma circular
+        cache.index = (cache.index + 1) % cache.times.length;
+
+        // Configurar Web Audio API
+        const ctx = THREE.AudioContext.getContext();
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+
+        // Empezar un poco antes (30ms) para no cortar el ataque sutil del clic
+        const startOffset = Math.max(0, peakTime - 0.03);
+        // Duración corta para un clic de teclado (200ms)
+        const duration = 0.20;
+
+        const gainNode = ctx.createGain();
+        gainNode.gain.setValueAtTime(volume, ctx.currentTime);
+        // Desvanecimiento exponencial rápido para evitar clics abruptos al final
+        gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration - 0.03);
+
+        source.connect(gainNode);
+        gainNode.connect(ctx.destination);
+
+        source.start(0, startOffset, duration);
     }
 }
 

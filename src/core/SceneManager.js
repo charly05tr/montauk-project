@@ -15,6 +15,7 @@ class SceneManager {
         this.currentScene = new THREE.Scene();
         this.atmosphere = new AtmosphereManager();
         this.activeSceneId = 'scene1'; // Iniciamos en la Escena 1 por defecto
+        this.previousSceneId = null;
         this.isTransitioning = false;
     }
 
@@ -61,9 +62,12 @@ class SceneManager {
         if (sceneId === this.activeSceneId) return;
 
         setHelpText('Cargando nueva escena...');
+        this.previousSceneId = this.activeSceneId;
         this.activeSceneId = sceneId;
         player.setMovementBounds?.(null);
         player.setMovementProfile?.(null);
+        player.movementSpeed = 8.0;
+        player.allowLateral = true;
 
         // Detener todos los audios de la escena anterior
         soundManager.stopAllAmbient();

@@ -6,16 +6,17 @@ import { ENABLE_SHADOWS } from '../../utils/constants.js';
 import { getMaterialName, tuneSchoolMaterial } from './objects.js';
 import { createStaticBox, createBoxFromMesh, createTrimeshFromMesh } from '../../physics/Collider.js';
 import { soundManager } from '../../core/SoundManager.js';
+import { eventBus } from '../../utils/eventBus.js';
 
 export let redLight, orangeLight;
 
 export function loadSchoolScene(scene, physicsWorld, player) {
   // Luces Base (La posición se ajustará matemáticamente después de cargar la sala)
-  redLight = new THREE.PointLight(0xff2a12, 0.05, 20, 2);
+  redLight = new THREE.PointLight(0xff2a12, 1.5, 20, 2);
   redLight.position.set(-3, 5, 1);
   scene.add(redLight);
 
-  orangeLight = new THREE.PointLight(0xff6a18, 0.05, 20, 2);
+  orangeLight = new THREE.PointLight(0xff6a18, 1.5, 20, 2);
   orangeLight.position.set(2.5, 3.75, -2.5);
   scene.add(orangeLight);
 
@@ -148,6 +149,7 @@ export function loadSchoolScene(scene, physicsWorld, player) {
       player.setPosition(finalRoomCenter.x, finalRoomBox.min.y + 2.0, finalRoomCenter.z);
 
       setMainSceneReady();
+      eventBus.emit('sceneReady', { sceneId: 'scene4' });
       setHelpText('Escena 4: Escuela | Click para entrar | WASD moverte | Escribe "HELP" para volver');
     },
     undefined,
@@ -160,9 +162,9 @@ export function loadSchoolScene(scene, physicsWorld, player) {
 
 export function updateScene4(time) {
   if (redLight) {
-    redLight.intensity = 0.05 * (0.8 + 0.2 * Math.sin(time * 4.0));
+    redLight.intensity = 1.5 * (0.8 + 0.2 * Math.sin(time * 4.0));
   }
   if (orangeLight) {
-    orangeLight.intensity = 0.05 * (0.8 + 0.2 * Math.cos(time * 3.0));
+    orangeLight.intensity = 1.5 * (0.8 + 0.2 * Math.cos(time * 3.0));
   }
 }

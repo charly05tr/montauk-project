@@ -12,7 +12,7 @@ export class Player {
         // Configuraciones de proporciones humanas (Escala 1:1 en metros)
         this.radius = 0.3;
         this.eyeHeight = 1.50; // Altura de los ojos desde el suelo
-        this.movementSpeed = 4.5; // Velocidad estándar (más controlada y realista)
+        this.movementSpeed = 8.0; // Velocidad estándar (8.0 m/s)
         this.allowLateral = true; // Permite moverse con A y D
 
         // 1. CÁMARA (Mundo Visual)
@@ -60,7 +60,7 @@ export class Player {
         // 3. CONTROLES DE VISIÓN (Mouse)
         this.controls = new PointerLockControls(this.camera, document.body);
         this.controls.pointerSpeed = 0.70; // Suaviza la sensibilidad del ratón (antes era 1.0)
-        this.speed = 4.5; // Velocidad de caminata más controlada y realista (m/s)
+        this.speed = 8.0; // Velocidad de caminata estándar (m/s)
 
         document.body.addEventListener('click', () => {
             soundManager.resumeContext();

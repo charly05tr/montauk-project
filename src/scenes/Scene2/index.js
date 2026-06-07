@@ -15,7 +15,17 @@ let isFlickeringActive = false; // Reset flicker state on each scene load
 let listenerAdded = false;
 let demogorgonSpawnPos = new THREE.Vector3();
 
+let sceneManagerInstance = null;
+import('../../core/SceneManager.js').then(({ sceneManager }) => {
+  sceneManagerInstance = sceneManager;
+});
+
+let portalGateNode = null;
+let activePhysicsWorld = null;
+
 export function loadRoomScene2(scene, physicsWorld, player) {
+  activePhysicsWorld = physicsWorld;
+  portalGateNode = null;
   // Reset flicker state each time the scene loads
   isFlickeringActive = false;
   // Luces Base (La posición se ajustará matemáticamente después de cargar la sala)
@@ -120,6 +130,10 @@ export function loadRoomScene2(scene, physicsWorld, player) {
       model.traverse((child) => {
         if (!child.isMesh) return;
         const nodeName = child.name.toLowerCase();
+        if (nodeName === 'object_9') {
+          portalGateNode = child;
+          console.log('[PORTAL] Gate node detected (Object_9):', child.name);
+        }
         child.material = Array.isArray(child.material)
           ? child.material.map(tuneHospitalMaterial)
           : tuneHospitalMaterial(child.material);
@@ -262,6 +276,25 @@ export function loadRoomScene2(scene, physicsWorld, player) {
 }
 
 export function updateScene2(time, player, dt) {
+  // Detección de proximidad al portal
+  if (portalGateNode && player && player.camera && !sceneManagerInstance?.isTransitioning) {
+    const playerPos = player.camera.position;
+    const portalPos = new THREE.Vector3();
+    portalGateNode.getWorldPosition(portalPos);
+
+    const dx = playerPos.x - portalPos.x;
+    const dz = playerPos.z - portalPos.z;
+    const distXZ = Math.sqrt(dx * dx + dz * dz);
+
+    if (distXZ < 3.0 && Math.abs(playerPos.y - portalPos.y) < 4.0) {
+      console.log('[PORTAL] Jugador llegó al portal. Transicionando a Scene 3 (Túnel)...');
+      if (sceneManagerInstance && activePhysicsWorld) {
+        soundManager.playDoorOpenSound();
+        sceneManagerInstance.switchSceneWithTransition('scene3', activePhysicsWorld, player);
+      }
+    }
+  }
+
   // Manejo de la visibilidad
   if (demogorgonModel) {
     demogorgonModel.visible = isFlickeringActive;

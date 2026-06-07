@@ -61,7 +61,7 @@ initGlobalLights(scene)
 // En Scene 1, el sistema del abecedario maneja "HELP" con luces interactivas.
 // En otras escenas, se mantiene como atajo de desarrollador.
 let typedBuffer = ''
-const sceneOrder = ['scene1', 'scene2', 'scene3']
+const sceneOrder = ['scene1', 'scene2', 'scene3', 'scene4']
 window.addEventListener('keydown', (e) => {
   if (e.key.length !== 1) return // Ignorar teclas especiales (Shift, Ctrl, etc.)
   

@@ -3,6 +3,7 @@ import * as CANNON from 'cannon-es';
 import { loadRoom, updateScene1 } from '../scenes/Scene1/index.js';
 import { loadRoomScene2, updateScene2 } from '../scenes/Scene2/index.js';
 import { loadTunnelScene, updateScene3 } from '../scenes/Scene3/index.js';
+import { loadSchoolScene, updateScene4 } from '../scenes/Scene4/index.js';
 import { AtmosphereManager } from './AtmosphereManager.js';
 import { cameraLight } from './Lights.js';
 import { setHelpText, fadeToBlack, fadeInFromBlack } from '../ui/Overlay/index.js';
@@ -26,12 +27,12 @@ class SceneManager {
         // Cargar habitación según la escena activa
         if (this.activeSceneId === 'scene1') {
             loadRoom(this.currentScene, physicsWorld, player);
-        } else {
-            if (this.activeSceneId === 'scene2') {
-                loadRoomScene2(this.currentScene, physicsWorld, player);
-            } else {
-                loadTunnelScene(this.currentScene, physicsWorld, player);
-            }
+        } else if (this.activeSceneId === 'scene2') {
+            loadRoomScene2(this.currentScene, physicsWorld, player);
+        } else if (this.activeSceneId === 'scene3') {
+            loadTunnelScene(this.currentScene, physicsWorld, player);
+        } else if (this.activeSceneId === 'scene4') {
+            loadSchoolScene(this.currentScene, physicsWorld, player);
         }
         
         // Inyectar la atmósfera en la escena actual
@@ -51,6 +52,9 @@ class SceneManager {
             updateScene2(time, player, dt);
         } else if (this.activeSceneId === 'scene3') {
             updateScene3(time, player, dt);
+        } else if (this.activeSceneId === 'scene4') {
+            updateScene4(time);
+        }
         }
     }
 
@@ -96,8 +100,10 @@ class SceneManager {
             loadRoom(this.currentScene, physicsWorld, player);
         } else if (this.activeSceneId === 'scene2') {
             loadRoomScene2(this.currentScene, physicsWorld, player);
-        } else {
+        } else if (this.activeSceneId === 'scene3') {
             loadTunnelScene(this.currentScene, physicsWorld, player);
+        } else if (this.activeSceneId === 'scene4') {
+            loadSchoolScene(this.currentScene, physicsWorld, player);
         }
 
         // 4. Volver a inyectar la atmósfera

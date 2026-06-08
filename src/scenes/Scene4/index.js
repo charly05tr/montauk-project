@@ -35,7 +35,7 @@ export function loadSchoolScene(scene, physicsWorld, player) {
       const rawHeight = initialBox.getSize(new THREE.Vector3()).y || 1;
 
       // Play audio
-      soundManager.playAmbient('school_ambient', '/sounds/general_music.mp3', true, 0.4);
+      soundManager.playAmbient('school_ambient', '/sounds/general_music.mp3', true, 0.2);
 
       // Forzamos que la altura de la escuela sea ~5.2 metros (en lugar de 3.5)
       // para hacer los pasillos/salones más anchos y espaciosos, mejorando la navegación

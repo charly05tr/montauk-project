@@ -109,7 +109,7 @@ export function loadRoomScene2(scene, physicsWorld, player) {
       model.updateMatrixWorld(true);
 
       // Play audio
-      soundManager.playAmbient('hospital_ambient', '/sounds/scene2.mp3', true, 0.05); 
+      soundManager.playAmbient('hospital_ambient', '/sounds/scene2.mp3', true, 0.3); 
 
       // --- 2. CENTRADO ABSOLUTO ---
       const scaledBox = new THREE.Box3().setFromObject(model);

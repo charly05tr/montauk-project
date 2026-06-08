@@ -339,6 +339,47 @@ export function loadRoom(scene, physicsWorld, player) {
         light.userData.active = true;
       });
 
+      // FIX PARED NEGRA: Añadir textura de madera abajo y tapiz arriba en la pared trasera
+      const textureLoader = new THREE.TextureLoader();
+
+      const woodHeight = 0.85; // Ajustado para coincidir con la altura de la madera de las otras paredes
+      const woodY = finalRoomBox.min.y + (woodHeight / 2);
+
+      const woodTex = textureLoader.load('/models/stranger_things_room/textures/wood-planks_baseColor.jpeg');
+      woodTex.wrapS = THREE.RepeatWrapping;
+      woodTex.wrapT = THREE.RepeatWrapping;
+      woodTex.repeat.set(4, 1);
+      woodTex.colorSpace = THREE.SRGBColorSpace;
+
+      const woodMat = new THREE.MeshLambertMaterial({
+        map: woodTex,
+        color: 0x666666,
+        side: THREE.DoubleSide
+      });
+      const woodPlane = new THREE.Mesh(new THREE.PlaneGeometry(finalRoomSize.x, woodHeight), woodMat);
+      woodPlane.position.set(finalRoomCenter.x, woodY, finalRoomBox.max.z - 0.05);
+      woodPlane.rotation.y = Math.PI;
+      scene.add(woodPlane);
+
+      const wallpaperHeight = finalRoomSize.y - woodHeight;
+      const wallpaperY = finalRoomBox.min.y + woodHeight + (wallpaperHeight / 2);
+
+      const wallTex = textureLoader.load('/models/stranger_things_room/textures/wall_texture_baseColor.jpeg');
+      wallTex.wrapS = THREE.RepeatWrapping;
+      wallTex.wrapT = THREE.RepeatWrapping;
+      wallTex.repeat.set(4, 1.5);
+      wallTex.colorSpace = THREE.SRGBColorSpace;
+
+      const wallMat = new THREE.MeshLambertMaterial({
+        map: wallTex,
+        color: 0x888888,
+        side: THREE.DoubleSide
+      });
+      const backWallPlane = new THREE.Mesh(new THREE.PlaneGeometry(finalRoomSize.x, wallpaperHeight), wallMat);
+      backWallPlane.position.set(finalRoomCenter.x, wallpaperY, finalRoomBox.max.z - 0.05);
+      backWallPlane.rotation.y = Math.PI;
+      scene.add(backWallPlane);
+
       // --- 5. FÍSICAS PERIMETRALES (La Prisión) ---
       const w = finalRoomSize.x;
       const h = finalRoomSize.y;

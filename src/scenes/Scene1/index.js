@@ -202,7 +202,7 @@ function onAlphabetKeyDown(e) {
           soundManager.playDoorOpenSound();
           sceneManagerInstance.switchSceneWithTransition('scene3', activePhysicsWorld, activePlayer);
         }
-      }, 1500);
+      }, 150);
     }
   } else {
     // Si tenía letras correctas y se equivocó, reproducir un timbrado fuerte como jump scare

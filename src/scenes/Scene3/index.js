@@ -8,9 +8,6 @@ import { eventBus } from '../../utils/eventBus.js';
 import { soundManager } from '../../core/SoundManager.js';
 
 let sceneManagerInstance = null;
-import('../../core/SceneManager.js').then(({ sceneManager }) => {
-  sceneManagerInstance = sceneManager;
-});
 
 let tunnelModel = null;
 const tunnelMaterials = [];
@@ -172,7 +169,8 @@ function prepareTunnelMaterial(material) {
   return cloned;
 }
 
-export function loadTunnelScene(scene, physicsWorld, player) {
+export function loadTunnelScene(scene, physicsWorld, player, sceneManager) {
+  sceneManagerInstance = sceneManager;
   activePlayer = player;
   activePhysicsWorld = physicsWorld;
   tunnelMaterials.length = 0;

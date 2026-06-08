@@ -11,9 +11,6 @@ import { eventBus } from '../../utils/eventBus.js';
 import { soundManager } from '../../core/SoundManager.js';
 
 let sceneManagerInstance = null;
-import('../../core/SceneManager.js').then(({ sceneManager }) => {
-  sceneManagerInstance = sceneManager;
-});
 
 export const xmasLights = [];
 let redLight, orangeLight;
@@ -228,7 +225,8 @@ function onAlphabetKeyDown(e) {
 // Registrar el listener global (se activa sólo cuando estamos en Scene 1)
 window.addEventListener('keydown', onAlphabetKeyDown);
 
-export function loadRoom(scene, physicsWorld, player) {
+export function loadRoom(scene, physicsWorld, player, sceneManager) {
+  sceneManagerInstance = sceneManager;
   activePlayer = player;
   activePhysicsWorld = physicsWorld;
   activeScene = scene;

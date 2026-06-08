@@ -16,14 +16,12 @@ let listenerAdded = false;
 let demogorgonSpawnPos = new THREE.Vector3();
 
 let sceneManagerInstance = null;
-import('../../core/SceneManager.js').then(({ sceneManager }) => {
-  sceneManagerInstance = sceneManager;
-});
 
 let portalGateNode = null;
 let activePhysicsWorld = null;
 
-export function loadRoomScene2(scene, physicsWorld, player) {
+export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
+  sceneManagerInstance = sceneManager;
   activePhysicsWorld = physicsWorld;
   portalGateNode = null;
   // Reset flicker state each time the scene loads

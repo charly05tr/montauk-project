@@ -28,11 +28,11 @@ class SceneManager {
 
         // Cargar habitación según la escena activa
         if (this.activeSceneId === 'scene1') {
-            loadScene1(this.currentScene, physicsWorld, player);
+            loadScene1(this.currentScene, physicsWorld, player, this);
         } else if (this.activeSceneId === 'scene2') {
-            loadScene2(this.currentScene, physicsWorld, player);
+            loadScene2(this.currentScene, physicsWorld, player, this);
         } else if (this.activeSceneId === 'scene3') {
-            loadScene3(this.currentScene, physicsWorld, player);
+            loadScene3(this.currentScene, physicsWorld, player, this);
         } else if (this.activeSceneId === 'scene4') {
             loadScene4(this.currentScene, physicsWorld, player);
         }
@@ -103,11 +103,11 @@ class SceneManager {
 
         // 3. Cargar la nueva escena
         if (this.activeSceneId === 'scene1') {
-            loadScene1(this.currentScene, physicsWorld, player);
+            loadScene1(this.currentScene, physicsWorld, player, this);
         } else if (this.activeSceneId === 'scene2') {
-            loadScene2(this.currentScene, physicsWorld, player);
+            loadScene2(this.currentScene, physicsWorld, player, this);
         } else if (this.activeSceneId === 'scene3') {
-            loadScene3(this.currentScene, physicsWorld, player);
+            loadScene3(this.currentScene, physicsWorld, player, this);
         } else if (this.activeSceneId === 'scene4') {
             loadScene4(this.currentScene, physicsWorld, player);
         }

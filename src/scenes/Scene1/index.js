@@ -313,12 +313,13 @@ export function loadRoom(scene, physicsWorld, player) {
         const childBox = new THREE.Box3().setFromObject(child);
         const childSize = childBox.getSize(new THREE.Vector3());
 
-        // FIX: Ajuste de ignorar objetos pequeños. 
-        // 0.5m (50cm) que puso la IA era enorme. Ignoramos cualquier cosa menor a 15cm
-        // para que no se generen físicas para tazas, revistas o controles remotos.
-        if (childSize.x < 0.15 && childSize.y < 0.15 && childSize.z < 0.15) return;
-        // Ignoramos alfombras y pósters planos
-        if (childSize.y < 0.02) return;
+        // FIX: Ajuste para ignorar objetos que generan fricción en el piso.
+        // Ignoramos todo lo que tenga menos de 30cm de altura (zapatos, libros, cajas pequeñas)
+        // para que el jugador pueda caminar sobre ellos sin engancharse.
+        if (childSize.y < 0.30) return;
+
+        // También ignoramos objetos muy delgados/pequeños en volumen general
+        if (childSize.x < 0.25 && childSize.z < 0.25) return;
 
         createBoxFromMesh(physicsWorld, child);
       });
@@ -338,6 +339,60 @@ export function loadRoom(scene, physicsWorld, player) {
         light.position.z = wallZ + 0.15;
         light.userData.active = true;
       });
+
+      // FIX PARED NEGRA: Añadir textura de madera abajo y tapiz arriba en la pared trasera
+      const textureLoader = new THREE.TextureLoader();
+
+      const woodHeight = 0.80; // Ajustado para coincidir con la altura de la madera de las otras paredes
+      const woodY = finalRoomBox.min.y + (woodHeight / 2);
+
+      const woodTex = textureLoader.load('/models/stranger_things_room/textures/wood-planks_baseColor.jpeg');
+      woodTex.wrapS = THREE.RepeatWrapping;
+      woodTex.wrapT = THREE.RepeatWrapping;
+      woodTex.repeat.set(4, 1);
+      woodTex.colorSpace = THREE.SRGBColorSpace;
+
+      const woodMat = new THREE.MeshStandardMaterial({
+        map: woodTex,
+        color: new THREE.Color(0xffffff).multiplyScalar(0.62),
+        roughness: 1.0,
+        metalness: 0.0,
+        side: THREE.DoubleSide
+      });
+      const woodThickness = 0.04; // 4cm de grosor para darle el relieve
+      const woodPlane = new THREE.Mesh(new THREE.BoxGeometry(finalRoomSize.x, woodHeight, woodThickness), woodMat);
+      // Lo posicionamos para que su cara trasera toque el tapiz
+      woodPlane.position.set(finalRoomCenter.x, woodY, finalRoomBox.max.z - 0.05 - (woodThickness / 2));
+      woodPlane.rotation.y = Math.PI;
+      scene.add(woodPlane);
+
+      // Separador negro (Moldura) para que empate perfectamente con el bisel de las otras paredes
+      const separatorHeight = 0.02;
+      const separatorMat = new THREE.MeshStandardMaterial({ color: 0x080808, roughness: 1.0, metalness: 0.0 });
+      const separatorPlane = new THREE.Mesh(new THREE.BoxGeometry(finalRoomSize.x, separatorHeight, woodThickness + 0.01), separatorMat);
+      separatorPlane.position.set(finalRoomCenter.x, finalRoomBox.min.y + woodHeight + (separatorHeight / 2), finalRoomBox.max.z - 0.05 - (woodThickness / 2));
+      scene.add(separatorPlane);
+
+      const wallpaperHeight = finalRoomSize.y - woodHeight;
+      const wallpaperY = finalRoomBox.min.y + woodHeight + (wallpaperHeight / 2);
+
+      const wallTex = textureLoader.load('/models/stranger_things_room/textures/wall_texture_baseColor.jpeg');
+      wallTex.wrapS = THREE.RepeatWrapping;
+      wallTex.wrapT = THREE.RepeatWrapping;
+      wallTex.repeat.set(4, 1.5);
+      wallTex.colorSpace = THREE.SRGBColorSpace;
+
+      const wallMat = new THREE.MeshStandardMaterial({
+        map: wallTex,
+        color: new THREE.Color(0xffffff).multiplyScalar(0.62),
+        roughness: 1.0,
+        metalness: 0.0,
+        side: THREE.DoubleSide
+      });
+      const backWallPlane = new THREE.Mesh(new THREE.PlaneGeometry(finalRoomSize.x, wallpaperHeight), wallMat);
+      backWallPlane.position.set(finalRoomCenter.x, wallpaperY, finalRoomBox.max.z - 0.05);
+      backWallPlane.rotation.y = Math.PI;
+      scene.add(backWallPlane);
 
       // --- 5. FÍSICAS PERIMETRALES (La Prisión) ---
       const w = finalRoomSize.x;

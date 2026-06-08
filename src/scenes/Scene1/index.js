@@ -311,16 +311,17 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
           return;
         }
 
+        // Muebles y props: creamos colisionador solo si el AABB no es desproporcionadamente
+        // ancho respecto a su altura. Un ratio alto indica un nodo agrupado (varios objetos
+        // fusionados) cuyo AABB gigante crearía un "suelo invisible" que deja flotando al jugador.
         const childBox = new THREE.Box3().setFromObject(child);
         const childSize = childBox.getSize(new THREE.Vector3());
 
-        // FIX: Ajuste para ignorar objetos que generan fricción en el piso.
-        // Ignoramos todo lo que tenga menos de 30cm de altura (zapatos, libros, cajas pequeñas)
-        // para que el jugador pueda caminar sobre ellos sin engancharse.
-        if (childSize.y < 0.30) return;
+        if (childSize.y < 0.15) return; // Muy plano: alfombras, libros en el suelo
+        if (childSize.x < 0.1 && childSize.z < 0.1) return; // Muy estrecho
 
-        // También ignoramos objetos muy delgados/pequeños en volumen general
-        if (childSize.x < 0.25 && childSize.z < 0.25) return;
+        const footprintRatio = (childSize.x * childSize.z) / Math.max(childSize.y, 0.01);
+        if (footprintRatio > 12) return; // Nodo agrupado: AABB demasiado amplio → omitir
 
         createBoxFromMesh(physicsWorld, child);
       });
@@ -408,9 +409,24 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
       createStaticBox(physicsWorld, w, h, t, { x: finalRoomCenter.x, y: finalRoomCenter.y, z: finalRoomBox.min.z - t / 2 }); // Frente
       createStaticBox(physicsWorld, w, h, t, { x: finalRoomCenter.x, y: finalRoomCenter.y, z: finalRoomBox.max.z + t / 2 }); // Atrás
 
-      // --- 6. SPAWN SEGURO DEL JUGADOR ---
-      // Spawn en el centro X/Z, y a 2 metros de altura sobre el suelo absoluto para evitar hundimientos
-      player.setPosition(finalRoomCenter.x, finalRoomBox.min.y + 2.0, finalRoomCenter.z);
+      // --- 6. SPAWN SEGURO DEL JUGADOR (con raycast al piso real) ---
+      // Disparamos un rayo hacia abajo desde el techo para encontrar la superficie del suelo
+      // y hacer spawn exactamente sobre ella, evitando aterrizar encima de muebles.
+      const raycaster = new THREE.Raycaster();
+      const rayOrigin = new THREE.Vector3(finalRoomCenter.x, finalRoomBox.max.y, finalRoomCenter.z);
+      raycaster.set(rayOrigin, new THREE.Vector3(0, -1, 0));
+      const hits = raycaster.intersectObject(model, true);
+      // El piso es la superficie con normal apuntando hacia arriba más cercana al min.y
+      let spawnY = finalRoomBox.min.y + player.radius + 0.1;
+      for (const hit of hits) {
+        const worldNormal = hit.face.normal.clone()
+          .transformDirection(hit.object.matrixWorld);
+        if (worldNormal.y > 0.7 && Math.abs(hit.point.y - finalRoomBox.min.y) < finalRoomSize.y * 0.25) {
+          spawnY = hit.point.y + player.radius + 0.05;
+          break;
+        }
+      }
+      player.setPosition(finalRoomCenter.x, spawnY, finalRoomCenter.z);
 
       setMainSceneReady();
       eventBus.emit('sceneReady', { sceneId: 'scene1' });

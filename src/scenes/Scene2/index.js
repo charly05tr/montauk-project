@@ -159,15 +159,22 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
         if (childSize.x < 0.15 && childSize.y < 0.15 && childSize.z < 0.15) return;
         if (childSize.y < 0.05) return;
 
+        // Para paredes/puertas estructurales, colisionador preciso
         if (nodeName.includes('wall') || nodeName.includes('door') || nodeName.includes('bar') || nodeName.includes('edge')) {
           if (childSize.x < 1.5 || childSize.z < 1.5) {
             createBoxFromMesh(physicsWorld, child);
           } else {
             createTrimeshFromMesh(physicsWorld, child);
           }
-        } else {
-          createBoxFromMesh(physicsWorld, child);
+          return;
         }
+
+        // Para muebles/props: solo crear colisionador si el AABB no es un nodo agrupado gigante.
+        // ratio alto (footprint >> altura) indica múltiples objetos fusionados en un solo nodo.
+        const footprintRatio = (childSize.x * childSize.z) / Math.max(childSize.y, 0.01);
+        if (footprintRatio > 12) return;
+
+        createBoxFromMesh(physicsWorld, child);
       });
 
       // --- 4. RELOCALIZACIÓN DE LUCES ---
@@ -187,12 +194,20 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
       createStaticBox(physicsWorld, w, h, t, { x: finalRoomCenter.x, y: finalRoomCenter.y, z: finalRoomBox.min.z - t / 2 }); 
       createStaticBox(physicsWorld, w, h, t, { x: finalRoomCenter.x, y: finalRoomCenter.y, z: finalRoomBox.max.z + t / 2 }); 
 
-      // --- 6. SPAWN SEGURO DEL JUGADOR ---
-      // Posición inicial del jugador
-      const playerStartX = finalRoomCenter.x;
-      const playerStartY = finalRoomBox.max.y - 0.5; // ligeramente bajo el techo
-      const playerStartZ = finalRoomBox.max.z - 0.5; // posición en el tope del hospital
-      player.setPosition(playerStartX, playerStartY, playerStartZ);
+      // --- 6. SPAWN SEGURO DEL JUGADOR (con raycast al piso real) ---
+      const raycaster2 = new THREE.Raycaster();
+      const spawnXZ2 = new THREE.Vector3(finalRoomCenter.x, finalRoomBox.max.y, finalRoomBox.max.z - 1.0);
+      raycaster2.set(spawnXZ2, new THREE.Vector3(0, -1, 0));
+      const hits2 = raycaster2.intersectObject(model, true);
+      let spawnY2 = finalRoomBox.min.y + player.radius + 0.1;
+      for (const hit of hits2) {
+        const worldNormal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+        if (worldNormal.y > 0.7 && Math.abs(hit.point.y - finalRoomBox.min.y) < finalRoomSize.y * 0.25) {
+          spawnY2 = hit.point.y + player.radius + 0.05;
+          break;
+        }
+      }
+      player.setPosition(finalRoomCenter.x, spawnY2, finalRoomBox.max.z - 1.0);
 
       // --- 7. CARGAR DEMOGORGON CON FÍSICAS ---
       assetCache.loadGLTF('/models/demogorgon.glb', loadingManager).then((demoGltf) => {

@@ -117,16 +117,21 @@ export function loadSchoolScene(scene, physicsWorld, player) {
         if (childSize.x < 0.15 && childSize.y < 0.15 && childSize.z < 0.15) return;
         if (childSize.y < 0.05) return;
 
-        // Generación heurística de colisionadores
+        // Para paredes/puertas estructurales, colisionador preciso
         if (nodeName.includes('wall') || nodeName.includes('door') || nodeName.includes('bar') || nodeName.includes('edge')) {
           if (childSize.x < 1.5 || childSize.z < 1.5) {
             createBoxFromMesh(physicsWorld, child);
           } else {
             createTrimeshFromMesh(physicsWorld, child);
           }
-        } else {
-          createBoxFromMesh(physicsWorld, child);
+          return;
         }
+
+        // Para muebles/props: solo crear colisionador si el AABB no es un nodo agrupado gigante.
+        const footprintRatio = (childSize.x * childSize.z) / Math.max(childSize.y, 0.01);
+        if (footprintRatio > 12) return;
+
+        createBoxFromMesh(physicsWorld, child);
       });
 
       // --- 4. RELOCALIZACIÓN DE LUCES (Relativas a la escuela) ---
@@ -146,9 +151,20 @@ export function loadSchoolScene(scene, physicsWorld, player) {
       createStaticBox(physicsWorld, w, h, t, { x: finalRoomCenter.x, y: finalRoomCenter.y, z: finalRoomBox.min.z - t / 2 }); // Frente
       createStaticBox(physicsWorld, w, h, t, { x: finalRoomCenter.x, y: finalRoomCenter.y, z: finalRoomBox.max.z + t / 2 }); // Atrás
 
-      // --- 6. SPAWN SEGURO DEL JUGADOR ---
-      // Spawn en el centro X/Z, y a 2 metros de altura sobre el suelo absoluto para evitar hundirse
-      player.setPosition(finalRoomCenter.x, finalRoomBox.min.y + 2.0, finalRoomCenter.z);
+      // --- 6. SPAWN SEGURO DEL JUGADOR (con raycast al piso real) ---
+      const raycaster4 = new THREE.Raycaster();
+      const spawnOrigin4 = new THREE.Vector3(finalRoomCenter.x, finalRoomBox.max.y, finalRoomCenter.z);
+      raycaster4.set(spawnOrigin4, new THREE.Vector3(0, -1, 0));
+      const hits4 = raycaster4.intersectObject(model, true);
+      let spawnY4 = finalRoomBox.min.y + player.radius + 0.1;
+      for (const hit of hits4) {
+        const worldNormal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+        if (worldNormal.y > 0.7 && Math.abs(hit.point.y - finalRoomBox.min.y) < finalRoomSize.y * 0.25) {
+          spawnY4 = hit.point.y + player.radius + 0.05;
+          break;
+        }
+      }
+      player.setPosition(finalRoomCenter.x, spawnY4, finalRoomCenter.z);
 
       setMainSceneReady();
       eventBus.emit('sceneReady', { sceneId: 'scene4' });

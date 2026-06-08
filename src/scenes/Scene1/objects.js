@@ -113,25 +113,33 @@ export function tuneRoomMaterial(material) {
     }
 
     if (src.name === 'ceiling') {
-      src.map = ceilingTexture;
-      // FIX DE TECHO OSCURO: Quitamos el tinte marrón oscuro (0x4a3325) que absorbía toda la luz.
-      // En blanco, la textura original de la madera se multiplicará solo por la luz ambiental.
-      src.color.set(0xffffff);
-    }
-
-    // 4. Degradación Elegante (Fallback) para Calidad Baja
-    if (LOW_QUALITY) {
+      // Usamos MeshLambertMaterial para que reaccione a la luz de la linterna y luces de la escena.
+      // Asignamos emissiveMap para que la textura sea visible en la penumbra sin perder sus detalles,
+      // y usamos un emisivo oscuro para que la luz ambiental no desentone con el resto del cuarto.
       finalMaterial = new THREE.MeshLambertMaterial({
-        color: src.color?.clone() || new THREE.Color(0xffffff),
-        map: src.map || null,
-        emissive: src.emissive?.clone() || new THREE.Color(0x000000),
-        side: THREE.FrontSide,
-        name: src.name || '',
+        map: ceilingTexture,
+        color: 0xffffff,
+        emissiveMap: ceilingTexture,
+        emissive: 0x444444,
+        side: THREE.DoubleSide,
+        name: 'ceiling'
       });
       finalMaterial = optimizeMaterial(finalMaterial);
     } else {
-      src.side = isRoomSurfaceMaterial(src.name) ? THREE.DoubleSide : THREE.FrontSide;
-      finalMaterial = optimizeMaterial(src);
+      // 4. Degradación Elegante (Fallback) para Calidad Baja
+      if (LOW_QUALITY) {
+        finalMaterial = new THREE.MeshLambertMaterial({
+          color: src.color?.clone() || new THREE.Color(0xffffff),
+          map: src.map || null,
+          emissive: src.emissive?.clone() || new THREE.Color(0x000000),
+          side: THREE.FrontSide,
+          name: src.name || '',
+        });
+        finalMaterial = optimizeMaterial(finalMaterial);
+      } else {
+        src.side = isRoomSurfaceMaterial(src.name) ? THREE.DoubleSide : THREE.FrontSide;
+        finalMaterial = optimizeMaterial(src);
+      }
     }
   }
 

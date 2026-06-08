@@ -73,24 +73,39 @@ class SceneManager {
         soundManager.stopAllAmbient();
         soundManager.stopAllPositional();
 
-        // 1. Limpiar objetos de la escena de Three.js
-        // Mantenemos la cámara del jugador, la luz del jugador y su target
-        const children = [...this.currentScene.children];
-        for (const child of children) {
+        // 1. Limpiar objetos de la escena de Three.js y liberar memoria VRAM (Memory Leak Fix)
+        const childrenToRemove = [];
+        for (const child of this.currentScene.children) {
             if (
                 child !== player.camera && 
                 child !== cameraLight && 
                 child !== (cameraLight ? cameraLight.target : null)
             ) {
-                this.currentScene.remove(child);
+                childrenToRemove.push(child);
             }
         }
+
+        childrenToRemove.forEach(child => {
+            this.currentScene.remove(child);
+            // Liberar geometrías y materiales recursivamente
+            child.traverse((node) => {
+                if (node.isMesh) {
+                    if (node.geometry) node.geometry.dispose();
+                    if (node.material) {
+                        if (Array.isArray(node.material)) {
+                            node.material.forEach(m => this.disposeMaterial(m));
+                        } else {
+                            this.disposeMaterial(node.material);
+                        }
+                    }
+                }
+            });
+        });
 
         this.currentScene.background = null;
         this.currentScene.fog = null;
 
         // 2. Limpiar cuerpos del mundo físico (Cannon.js)
-        // Mantenemos el cuerpo físico del jugador
         const bodies = [...physicsWorld.world.bodies];
         for (const body of bodies) {
             if (body !== player.body) {
@@ -113,26 +128,34 @@ class SceneManager {
         this.atmosphere.injectIntoScene(this.currentScene);
     }
 
+    disposeMaterial(material) {
+        material.dispose();
+        // Liberar texturas si existen
+        if (material.map) material.map.dispose();
+        if (material.normalMap) material.normalMap.dispose();
+        if (material.roughnessMap) material.roughnessMap.dispose();
+        if (material.metalnessMap) material.metalnessMap.dispose();
+    }
+
     async switchSceneWithTransition(sceneId, physicsWorld, player) {
         if (sceneId === this.activeSceneId) return;
         if (this.isTransitioning) return;
         this.isTransitioning = true;
 
-        // 1. Desbloquear el mouse / controles del jugador y detener movimiento
+        // 1. Desbloquear controles y detener movimiento
         if (player.controls && player.controls.isLocked) {
             player.controls.unlock();
         }
         player.body.velocity.set(0, 0, 0);
         player.body.angularVelocity.set(0, 0, 0);
         
-        // Ponemos el cuerpo físico como KINEMATIC para que no sea afectado por la gravedad
-        // y se quede flotando/estático durante la pantalla en negro (evita caídas al vacío)
+        // Bloquear caídas al vacío poniendo a KINEMATIC
         player.body.type = CANNON.Body.KINEMATIC;
 
         // 2. Fundido a negro suave
         await fadeToBlack(1200);
 
-        // 3. Crear promesa para esperar a que la nueva escena se cargue (gltfLoader complete)
+        // 3. Crear promesa para esperar a que la nueva escena se cargue
         const sceneLoadPromise = new Promise((resolve) => {
             const onSceneReady = (e) => {
                 if (e.detail.sceneId === sceneId) {
@@ -143,18 +166,27 @@ class SceneManager {
             eventBus.on('sceneReady', onSceneReady);
         });
 
-        // 4. Disparar el cambio de escena real (destruye lo viejo e inicia la carga GLTF de lo nuevo)
+        // 4. Disparar el cambio de escena (destruye viejo e inicia carga de lo nuevo)
         this.switchScene(sceneId, physicsWorld, player);
 
-        // 5. Esperar a que la escena esté completamente lista
+        // 5. Esperar a que la escena esté completamente ensamblada
         await sceneLoadPromise;
+
+        // 5.5 Precompilar Shaders (MATA EL LAG SPIKE)
+        // Usamos una importación dinámica rápida del renderer solo para compilar
+        const { getRenderer } = await import('./Renderer.js');
+        const renderer = getRenderer();
+        if (renderer) {
+            // Al compilar durante el fundido a negro, el usuario no verá el tirón del primer frame
+            renderer.compile(this.currentScene, player.camera);
+        }
 
         // 6. Volver a activar la física dinámica del jugador
         player.body.type = CANNON.Body.DYNAMIC;
         player.body.velocity.set(0, 0, 0);
         player.body.angularVelocity.set(0, 0, 0);
 
-        // 7. Esperar un instante corto de seguridad y fundir a la imagen de la nueva escena
+        // 7. Esperar un instante corto y fundir a la nueva escena
         await new Promise((resolve) => setTimeout(resolve, 200));
         await fadeInFromBlack(1200);
 

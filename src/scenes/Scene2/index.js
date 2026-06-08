@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { assetCache } from '../../utils/AssetCache.js';
 import { loadingManager, setMainSceneReady } from '../../ui/Loading/index.js';
 import { eventBus } from '../../utils/eventBus.js';
 import { setHelpText, setFloatingHelp } from '../../ui/Overlay/index.js';
@@ -93,10 +93,7 @@ export function loadRoomScene2(scene, physicsWorld, player) {
     listenerAdded = true;
   }
 
-  const gltfLoader = new GLTFLoader(loadingManager);
-
-  gltfLoader.load(
-    '/models/Velez_Paiz.glb',
+  assetCache.loadGLTF('/models/Velez_Paiz.glb', loadingManager).then(
     (gltf) => {
       const model = gltf.scene;
 
@@ -196,7 +193,7 @@ export function loadRoomScene2(scene, physicsWorld, player) {
       player.setPosition(playerStartX, playerStartY, playerStartZ);
 
       // --- 7. CARGAR DEMOGORGON CON FÍSICAS ---
-      gltfLoader.load('/models/demogorgon.glb', (demoGltf) => {
+      assetCache.loadGLTF('/models/demogorgon.glb', loadingManager).then((demoGltf) => {
         demogorgonModel = demoGltf.scene;
         
         const demoBox = new THREE.Box3().setFromObject(demogorgonModel);
@@ -261,19 +258,17 @@ export function loadRoomScene2(scene, physicsWorld, player) {
         demogorgonBody.collisionFilterGroup = 0;
         demogorgonBody.collisionFilterMask = 0;
         physicsWorld.world.addBody(demogorgonBody);
-      });
+      }).catch(err => console.error("Error loading demogorgon:", err));
 
       setMainSceneReady();
       eventBus.emit('sceneReady', { sceneId: 'scene2' });
       setFloatingHelp('<b>Scene: Hawking Lab </b><br><br><b>Controls:</b><br>- Click to enter<br>- WASD to move<br>- Press "L" to toggle Demogorgon flash<br><br><b>Exit:</b><br>- Press ESC to unlock pointer<br>- Find the portal to teleport yourself to the next scene');
       setHelpText('');
-    },
-    undefined,
-    (error) => {
-      console.error(error);
-      setHelpText('Failed to load hospital model.');
     }
-  );
+  ).catch((error) => {
+    console.error(error);
+    setHelpText('Failed to load hospital model.');
+  });
 }
 
 export function updateScene2(time, player, dt) {

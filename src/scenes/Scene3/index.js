@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { assetCache } from '../../utils/AssetCache.js';
 import { loadingManager, setMainSceneReady } from '../../ui/Loading/index.js';
 import { setHelpText, setFloatingHelp } from '../../ui/Overlay/index.js';
 import { ENABLE_SHADOWS } from '../../utils/constants.js';
@@ -198,8 +198,6 @@ export function loadTunnelScene(scene, physicsWorld, player) {
   scene.add(bluePulse);
   tunnelLights.push(bluePulse);
 
-  const gltfLoader = new GLTFLoader(loadingManager);
-
   if (!scrollTexture) {
     scrollTexture = new THREE.TextureLoader(loadingManager).load('/models/Tunel/texture/text_tunel.jpeg');
     scrollTexture.colorSpace = THREE.SRGBColorSpace;
@@ -208,8 +206,7 @@ export function loadTunnelScene(scene, physicsWorld, player) {
     scrollTexture.repeat.set(2, 4);
   }
 
-  gltfLoader.load(
-    '/models/Tunel/tunelST.glb',
+  assetCache.loadGLTF('/models/Tunel/tunelST.glb', loadingManager).then(
     (gltf) => {
       tunnelModel = gltf.scene;
 
@@ -527,13 +524,11 @@ export function loadTunnelScene(scene, physicsWorld, player) {
       
       // Reproducir sonido ambiente del túnel
       soundManager.playAmbient('tunnel_ambient', '/sounds/scene3song.mp3', true, 0.45);
-    },
-    undefined,
-    (error) => {
-      console.error(error);
-      setHelpText('Failed to load tunnel model.');
     }
-  );
+  ).catch((error) => {
+    console.error(error);
+    setHelpText('Failed to load tunnel model.');
+  });
 }
 
 export function updateScene3(time, player, dt) {

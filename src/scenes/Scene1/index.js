@@ -1,6 +1,8 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { assetCache } from '../../utils/AssetCache.js';
 import { loadingManager, setMainSceneReady } from '../../ui/Loading/index.js';
+
+// ... (skipping down to the loadRoom function)
 import { setHelpText, setFloatingHelp } from '../../ui/Overlay/index.js';
 import { ENABLE_SHADOWS } from '../../utils/constants.js';
 import { getMaterialName, tuneRoomMaterial, isRoomSurfaceMaterial, xmasBulbMaterialNames } from './objects.js';
@@ -241,10 +243,7 @@ export function loadRoom(scene, physicsWorld, player) {
   orangeLight.position.set(2.5, 3.75, -2.5)
   scene.add(orangeLight)
 
-  const gltfLoader = new GLTFLoader(loadingManager);
-
-  gltfLoader.load(
-    '/models/stranger_things_room/scene.gltf',
+  assetCache.loadGLTF('/models/stranger_things_room/scene.gltf', loadingManager).then(
     (gltf) => {
       const model = gltf.scene;
 
@@ -415,13 +414,11 @@ export function loadRoom(scene, physicsWorld, player) {
       eventBus.emit('sceneReady', { sceneId: 'scene1' });
       setFloatingHelp('<b>Scene 1: The Anomaly</b><br><br><b>Controls:</b><br>- Click to enter<br>- WASD to move<br><br><b>Exit:</b><br>- Press ESC to unlock pointer<br>- Type "HELP" to teleport');
       setHelpText('');
-    },
-    undefined,
-    (error) => {
-      console.error(error);
-      setHelpText('Failed to load room model.');
     }
-  );
+  ).catch((error) => {
+    console.error(error);
+    setHelpText('Failed to load room model.');
+  });
 }
 
 export function updateScene1(time) {

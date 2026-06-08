@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { assetCache } from '../../utils/AssetCache.js';
 import { loadingManager, setMainSceneReady } from '../../ui/Loading/index.js';
 import { setHelpText, setFloatingHelp } from '../../ui/Overlay/index.js';
 import { ENABLE_SHADOWS } from '../../utils/constants.js';
@@ -20,10 +20,7 @@ export function loadSchoolScene(scene, physicsWorld, player) {
   orangeLight.position.set(2.5, 3.75, -2.5);
   scene.add(orangeLight);
 
-  const gltfLoader = new GLTFLoader(loadingManager);
-
-  gltfLoader.load(
-    '/models/Escuela.glb',
+  assetCache.loadGLTF('/models/Escuela.glb', loadingManager).then(
     (gltf) => {
       const model = gltf.scene;
 
@@ -152,13 +149,11 @@ export function loadSchoolScene(scene, physicsWorld, player) {
       eventBus.emit('sceneReady', { sceneId: 'scene4' });
       setFloatingHelp('<b>Scene: The Origins (Hawking lab`s school)</b><br><br><b>Controls:</b><br>- Click to enter<br>- WASD to move<br><br><b>Exit:</b><br>- Press ESC to unlock pointer<br>- Type "HELP" to teleport');
       setHelpText('');
-    },
-    undefined,
-    (error) => {
-      console.error(error);
-      setHelpText('Failed to load school model.');
     }
-  );
+  ).catch((error) => {
+    console.error(error);
+    setHelpText('Failed to load school model.');
+  });
 }
 
 export function updateScene4(time) {

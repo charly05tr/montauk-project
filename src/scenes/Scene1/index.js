@@ -247,26 +247,30 @@ export function loadRoom(scene, physicsWorld, player) {
     (gltf) => {
       const model = gltf.scene;
 
-      // --- 1. ESCALA DINÁMICA PERFECTA ---
-      // Calculamos el tamaño original "crudo" que trae el modelo desde Blender
-      const initialBox = new THREE.Box3().setFromObject(model);
-      const rawHeight = initialBox.getSize(new THREE.Vector3()).y;
+      if (!model.userData.isConfigured) {
+        // --- 1. ESCALA DINÁMICA PERFECTA ---
+        // Calculamos el tamaño original "crudo" que trae el modelo desde Blender
+        const initialBox = new THREE.Box3().setFromObject(model);
+        const rawHeight = initialBox.getSize(new THREE.Vector3()).y;
 
-      // Forzamos matemáticamente que el techo de la casa de Joyce mida ~3.0 metros
-      const targetHeight = 3.0;
-      const scaleFactor = targetHeight / rawHeight;
-      model.scale.setScalar(scaleFactor);
-      model.updateMatrixWorld(true);
+        // Forzamos matemáticamente que el techo de la casa de Joyce mida ~3.0 metros
+        const targetHeight = 3.0;
+        const scaleFactor = targetHeight / rawHeight;
+        model.scale.setScalar(scaleFactor);
+        model.updateMatrixWorld(true);
 
-      // --- 2. CENTRADO ABSOLUTO ---
-      // Calculamos la caja NUEVAMENTE ahora que el modelo tiene el tamaño correcto
-      const scaledBox = new THREE.Box3().setFromObject(model);
-      const center = scaledBox.getCenter(new THREE.Vector3());
+        // --- 2. CENTRADO ABSOLUTO ---
+        // Calculamos la caja NUEVAMENTE ahora que el modelo tiene el tamaño correcto
+        const scaledBox = new THREE.Box3().setFromObject(model);
+        const center = scaledBox.getCenter(new THREE.Vector3());
 
-      model.position.x -= center.x;
-      model.position.y -= center.y;
-      model.position.z -= center.z;
-      model.updateMatrixWorld(true);
+        model.position.x -= center.x;
+        model.position.y -= center.y;
+        model.position.z -= center.z;
+        model.updateMatrixWorld(true);
+
+        model.userData.isConfigured = true;
+      }
 
       scene.add(model);
 

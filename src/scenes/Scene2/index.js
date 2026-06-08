@@ -97,25 +97,29 @@ export function loadRoomScene2(scene, physicsWorld, player) {
     (gltf) => {
       const model = gltf.scene;
 
-      // --- 1. ESCALA DINÁMICA ---
-      const initialBox = new THREE.Box3().setFromObject(model);
-      const rawHeight = initialBox.getSize(new THREE.Vector3()).y;
-      const targetHeight = 3.2;
-      const scaleFactor = targetHeight / rawHeight;
-      model.scale.setScalar(scaleFactor);
-      model.updateMatrixWorld(true);
+      if (!model.userData.isConfigured) {
+        // --- 1. ESCALA DINÁMICA ---
+        const initialBox = new THREE.Box3().setFromObject(model);
+        const rawHeight = initialBox.getSize(new THREE.Vector3()).y;
+        const targetHeight = 3.2;
+        const scaleFactor = targetHeight / rawHeight;
+        model.scale.setScalar(scaleFactor);
+        model.updateMatrixWorld(true);
+
+        // --- 2. CENTRADO ABSOLUTO ---
+        const scaledBox = new THREE.Box3().setFromObject(model);
+        const center = scaledBox.getCenter(new THREE.Vector3());
+
+        model.position.x -= center.x;
+        model.position.y -= center.y;
+        model.position.z -= center.z;
+        model.updateMatrixWorld(true);
+
+        model.userData.isConfigured = true;
+      }
 
       // Play audio
       soundManager.playAmbient('hospital_ambient', '/sounds/scene2.mp3', true, 0.3); 
-
-      // --- 2. CENTRADO ABSOLUTO ---
-      const scaledBox = new THREE.Box3().setFromObject(model);
-      const center = scaledBox.getCenter(new THREE.Vector3());
-
-      model.position.x -= center.x;
-      model.position.y -= center.y;
-      model.position.z -= center.z;
-      model.updateMatrixWorld(true);
 
       scene.add(model);
 

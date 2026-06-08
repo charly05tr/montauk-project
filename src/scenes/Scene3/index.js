@@ -210,20 +210,24 @@ export function loadTunnelScene(scene, physicsWorld, player) {
     (gltf) => {
       tunnelModel = gltf.scene;
 
-      const initialBox = new THREE.Box3().setFromObject(tunnelModel);
-      const rawHeight = initialBox.getSize(new THREE.Vector3()).y || 1;
-      // Incrementamos la escala del túnel para que el personaje se sienta más pequeño
-      // y no choque con las paredes
-      const targetHeight = 10.0;
-      const scaleFactor = targetHeight / rawHeight;
+      if (!tunnelModel.userData.isConfigured) {
+        const initialBox = new THREE.Box3().setFromObject(tunnelModel);
+        const rawHeight = initialBox.getSize(new THREE.Vector3()).y || 1;
+        // Incrementamos la escala del túnel para que el personaje se sienta más pequeño
+        // y no choque con las paredes
+        const targetHeight = 10.0;
+        const scaleFactor = targetHeight / rawHeight;
 
-      tunnelModel.scale.setScalar(scaleFactor);
-      tunnelModel.updateMatrixWorld(true);
+        tunnelModel.scale.setScalar(scaleFactor);
+        tunnelModel.updateMatrixWorld(true);
 
-      const scaledBox = new THREE.Box3().setFromObject(tunnelModel);
-      const center = scaledBox.getCenter(new THREE.Vector3());
-      tunnelModel.position.sub(center);
-      tunnelModel.updateMatrixWorld(true);
+        const scaledBox = new THREE.Box3().setFromObject(tunnelModel);
+        const center = scaledBox.getCenter(new THREE.Vector3());
+        tunnelModel.position.sub(center);
+        tunnelModel.updateMatrixWorld(true);
+
+        tunnelModel.userData.isConfigured = true;
+      }
 
       scene.add(tunnelModel);
 

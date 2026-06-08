@@ -1,5 +1,4 @@
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 
 class AssetCache {
     constructor() {
@@ -15,11 +14,9 @@ class AssetCache {
      */
     async loadGLTF(url, loadingManager = null) {
         if (this.cache.has(url)) {
-            // Ya está en memoria. Clonamos instantáneamente usando SkeletonUtils para soportar animaciones (si hubiese)
-            // y para asegurar que cada instancia de la escena tenga su propia jerarquía de nodos.
-            const originalGLTF = this.cache.get(url);
-            const clonedScene = SkeletonUtils.clone(originalGLTF.scene);
-            return { scene: clonedScene };
+            // Ya está en memoria. Como solo mostramos una escena a la vez y no hemos destruido sus materiales,
+            // podemos devolver el objeto original intacto, ahorrando cualquier problema de clonación de SkinnedMeshes.
+            return this.cache.get(url);
         }
 
         // Si no está en memoria, usamos una Promesa para envolver el GLTFLoader
@@ -30,10 +27,7 @@ class AssetCache {
                 (gltf) => {
                     // Guardamos el objeto gltf original en caché
                     this.cache.set(url, gltf);
-                    
-                    // Devolvemos un clon para que la escena original nunca sea mutada por error
-                    const clonedScene = SkeletonUtils.clone(gltf.scene);
-                    resolve({ scene: clonedScene });
+                    resolve(gltf);
                 },
                 undefined, // Progreso interno no expuesto en la promesa pura
                 (error) => {

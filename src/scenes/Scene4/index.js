@@ -24,21 +24,26 @@ export function loadSchoolScene(scene, physicsWorld, player) {
     (gltf) => {
       const model = gltf.scene;
 
-      model.rotation.x = Math.PI / 2; // (o Math.PI / 2 si gira al revés)
+      if (!model.userData.isConfigured) {
+        // --- 1. ESCALA DINÁMICA ---
+        // Calculamos el tamaño original "crudo" que trae el modelo ANTES de rotarlo
+        const initialBox = new THREE.Box3().setFromObject(model);
+        const rawHeight = initialBox.getSize(new THREE.Vector3()).y || 1;
 
-      // --- 1. ESCALA DINÁMICA ---
-      // Calculamos el tamaño original "crudo" que trae el modelo
-      const initialBox = new THREE.Box3().setFromObject(model);
-      const rawHeight = initialBox.getSize(new THREE.Vector3()).y || 1;
+        // Forzamos que la altura de la escuela sea ~5.2 metros (en lugar de 3.5)
+        const targetHeight = 5.2;
+        const scaleFactor = targetHeight / rawHeight;
+        model.scale.setScalar(scaleFactor);
+
+        // Ahora lo rotamos
+        model.rotation.x = Math.PI / 2;
+
+        model.userData.isConfigured = true;
+      }
 
       // Play audio
       soundManager.playAmbient('school_ambient', '/sounds/general_music.mp3', true, 0.2);
 
-      // Forzamos que la altura de la escuela sea ~5.2 metros (en lugar de 3.5)
-      // para hacer los pasillos/salones más anchos y espaciosos, mejorando la navegación
-      const targetHeight = 5.2;
-      const scaleFactor = targetHeight / rawHeight;
-      model.scale.setScalar(scaleFactor);
       model.updateMatrixWorld(true);
 
       // --- 2. CENTRADO ABSOLUTO ---

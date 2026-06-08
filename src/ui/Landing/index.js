@@ -237,7 +237,7 @@ export function initLandingPage(onStartCallback) {
 
   const title = document.createElement('h1');
   title.className = 'montauk-title';
-  title.textContent = 'Project Montauk';
+  title.textContent = 'Montauk Project';
 
   const subtitle = document.createElement('p');
   subtitle.className = 'montauk-subtitle';
@@ -277,10 +277,10 @@ export function initLandingPage(onStartCallback) {
   enterButton.addEventListener('click', (e) => {
     // Evitamos que el clic se propague y active el PointerLock del juego accidentalmente
     e.stopPropagation();
-    
+
     // Desvanecemos la pantalla
     container.style.opacity = '0';
-    
+
     // Esperamos la transición para removerla e iniciar la app
     setTimeout(() => {
       if (container.parentNode) {
@@ -298,6 +298,6 @@ export function initLandingPage(onStartCallback) {
   container.appendChild(demogorgon);
   container.appendChild(controlsLeft);
   container.appendChild(controlsRight);
-  
+
   document.body.appendChild(container);
 }

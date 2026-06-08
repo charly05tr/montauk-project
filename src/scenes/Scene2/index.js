@@ -109,7 +109,7 @@ export function loadRoomScene2(scene, physicsWorld, player) {
       model.updateMatrixWorld(true);
 
       // Play audio
-      soundManager.playAmbient('hospital_ambient', '/sounds/scene2.mp3', true, 0.4);
+      soundManager.playAmbient('hospital_ambient', '/sounds/scene2.mp3', true, 0.05); 
 
       // --- 2. CENTRADO ABSOLUTO ---
       const scaledBox = new THREE.Box3().setFromObject(model);
@@ -189,7 +189,7 @@ export function loadRoomScene2(scene, physicsWorld, player) {
       createStaticBox(physicsWorld, w, h, t, { x: finalRoomCenter.x, y: finalRoomCenter.y, z: finalRoomBox.max.z + t / 2 }); 
 
       // --- 6. SPAWN SEGURO DEL JUGADOR ---
-      // Posición inicial del jugador en el techo (cerca del tope)
+      // Posición inicial del jugador
       const playerStartX = finalRoomCenter.x;
       const playerStartY = finalRoomBox.max.y - 0.5; // ligeramente bajo el techo
       const playerStartZ = finalRoomBox.max.z - 0.5; // posición en el tope del hospital
@@ -205,7 +205,7 @@ export function loadRoomScene2(scene, physicsWorld, player) {
         // Si el modelo es un SkinnedMesh, el Box3 puede dar 0 o infinito. Fallback a 1.0.
         let scaleFactor = 1.0;
         if (rawHeight > 0 && isFinite(rawHeight)) {
-            // Queremos que el Demogorgon tenga una altura aproximada de 2.0 m (un poco mayor que antes)
+            // Queremos que el Demogorgon tenga una altura aproximada de 2.0 m 
             // 2.0 / rawHeight da una escala razonable y ligeramente mayor.
             scaleFactor = 2.0 / rawHeight;
         } else {
@@ -308,9 +308,7 @@ export function updateScene2(time, player, dt) {
     }
 
     if (demogorgonModel && demogorgonBody && player && player.camera && dt) {
-      // -------------------------------------------------------------------
       //  Chase logic – movimiento mediante posición KINEMÁTICA (solo XZ) con límite mínimo
-      // -------------------------------------------------------------------
       // Asegurarnos de que el cuerpo está en modo KINEMATIC (sin gravedad)
       if (demogorgonBody.type !== CANNON.Body.KINEMATIC) {
         demogorgonBody.type = CANNON.Body.KINEMATIC;
@@ -357,8 +355,6 @@ export function updateScene2(time, player, dt) {
         player.camera.position.z
       );
       demogorgonModel.lookAt(lookAtPos);
-
-      // ---------------------------------------------------------------------------------------------------------------------------------------
     }
   }
 

@@ -9,6 +9,7 @@ import { getMaterialName, tuneRoomMaterial, isRoomSurfaceMaterial, xmasBulbMater
 import { createStaticBox, createBoxFromMesh, createTrimeshFromMesh } from '../../physics/Collider.js';
 import { eventBus } from '../../utils/eventBus.js';
 import { soundManager } from '../../core/SoundManager.js';
+import { startPortalSequence, updatePortalSequence, cleanupPortalSequence, isPortalActive } from './PortalSequence.js';
 
 let sceneManagerInstance = null;
 
@@ -31,8 +32,8 @@ const activeLights = [];       // PointLights activos que iluminan los foquitos
 const LETTER_LIGHT_COLORS = {
   h: 0xff2514,  // Rojo intenso
   e: 0x20c7ff,  // Azul eléctrico
-  l: 0xffe05a,  // Amarillo cálido
-  p: 0xff2514,  // Rojo intenso
+  l: 0xff2514,  // Rojo intenso
+  p: 0xffe05a,  // Amarillo cálido
 };
 const DEFAULT_LIGHT_COLOR = 0xffe05a;
 
@@ -45,6 +46,8 @@ function cleanupAlphabetState() {
   });
   activeLights.length = 0;
   alphabetBulbs.length = 0;
+  // Limpiar objetos del portal si existían
+  cleanupPortalSequence();
 }
 
 /**
@@ -55,10 +58,9 @@ function collectAndMapBulbs(model) {
   alphabetBulbs.length = 0;
   const bulbParents = [];
 
-  // 1. Recolectar todos los nodos "Plane" que son los foquitos
+  // 1. Recolectar nodos
   model.traverse((child) => {
     if (!child.name || !child.name.startsWith('Plane')) return;
-    // Obtener la posición mundial del foquito
     const worldPos = new THREE.Vector3();
     child.getWorldPosition(worldPos);
     bulbParents.push({ node: child, worldPos });
@@ -66,14 +68,11 @@ function collectAndMapBulbs(model) {
 
   if (bulbParents.length === 0) return;
 
-  // 2. Separar en filas usando el eje Y (altura)
-  // Ordenar por Y descendente para obtener las filas de arriba a abajo
+  // 2. Ordenar por altura (Filas)
   bulbParents.sort((a, b) => b.worldPos.y - a.worldPos.y);
-
-  // Usar clustering simple por Y para identificar filas
   const rows = [];
   let currentRow = [bulbParents[0]];
-  const ROW_THRESHOLD = 0.15; // Si la diferencia en Y es menor a 15cm, misma fila
+  const ROW_THRESHOLD = 0.15;
 
   for (let i = 1; i < bulbParents.length; i++) {
     const prevY = currentRow[currentRow.length - 1].worldPos.y;
@@ -87,29 +86,44 @@ function collectAndMapBulbs(model) {
   }
   rows.push(currentRow);
 
-  // 3. Dentro de cada fila, ordenar por Z (eje lateral de la pared)
-  // En este modelo, los foquitos están en la pared Z-negativo,
-  // así que Z más negativo = izquierda visual del jugador
-  rows.forEach(row => {
-    row.sort((a, b) => a.worldPos.z - b.worldPos.z);
-  });
+  // 3. Ordenar por Z (Izquierda a Derecha)
+  rows.forEach(row => row.sort((a, b) => a.worldPos.z - b.worldPos.z));
 
-  // 4. Aplanar las filas y tomar los primeros 26 para A-Z
-  const alphabet = 'abcdefghijklmnopqrstuvwxyz';
+  // 4. Aplanar array definitivo
   const flatBulbs = rows.flat();
 
-  for (let i = 0; i < Math.min(26, flatBulbs.length); i++) {
-    const bulb = flatBulbs[i];
+  const STRANGER_MAP = {
+    'h': 4,
+    'e': 12,
+    'l': 17,
+    'p': 7
+  };
+
+  flatBulbs.forEach((bulb, i) => {
+    const letterEntry = Object.entries(STRANGER_MAP).find(([key, val]) => val === i);
+    const letter = letterEntry ? letterEntry[0] : null;
+
+    if (i === 17) {
+      const offsetVisualDerecha = 0.15; // 15cm
+      const offsetHaciaAbajo = 0.04;   // -1cm
+
+      bulb.node.position.z += offsetVisualDerecha;
+      bulb.node.position.y += offsetHaciaAbajo;
+
+      bulb.node.updateMatrixWorld(true);
+    }
+
+    const finalWorldPos = new THREE.Vector3();
+    bulb.node.getWorldPosition(finalWorldPos);
+
     alphabetBulbs.push({
       node: bulb.node,
-      worldPos: bulb.worldPos.clone(),
-      letter: alphabet[i],
-      pointLight: null, // Se crea cuando se ilumina
+      worldPos: finalWorldPos,
+      index: i,
+      letter: letter,
+      pointLight: null,
     });
-  }
-
-  console.log(`[ABECEDARIO] Mapeados ${alphabetBulbs.length} foquitos a letras:`,
-    alphabetBulbs.map(b => b.letter.toUpperCase()).join(' '));
+  });
 }
 
 /**
@@ -117,14 +131,16 @@ function collectAndMapBulbs(model) {
  */
 function illuminateLetter(letter, scene) {
   const entry = alphabetBulbs.find(b => b.letter === letter.toLowerCase());
-  if (!entry) return;
+
+  // PROTECCIÓN: Si la letra no existe en nuestro mapa (ej. presionan la 'A'), abortamos
+  if (!entry || !entry.letter) return;
 
   // Si ya tiene luz, no crear otra
   if (entry.pointLight) return;
 
   const color = LETTER_LIGHT_COLORS[letter.toLowerCase()] || DEFAULT_LIGHT_COLOR;
 
-  // Crear PointLight brillante en la posición del foquito
+  // Crear PointLight brillante en la posición exacta del foquito
   const light = new THREE.PointLight(color, 8.0, 4.0, 1.5);
   light.position.copy(entry.worldPos);
   scene.add(light);
@@ -132,7 +148,7 @@ function illuminateLetter(letter, scene) {
   entry.pointLight = light;
   activeLights.push(light);
 
-  // También hacer que el mesh del foquito brille (cambiar el material del hijo coloreado)
+  // Desvincular y cambiar el material del foquito para que brille
   entry.node.traverse((child) => {
     if (!child.isMesh) return;
     const matName = child.material?.name || '';
@@ -194,16 +210,25 @@ function onAlphabetKeyDown(e) {
       helpTriggered = true;
       setHelpText('H E L P');
 
-      // Esperar un momento dramático antes de la transición
-      setTimeout(() => {
-        if (sceneManagerInstance && activePhysicsWorld && activePlayer) {
-          soundManager.stopAmbient('phone');
-          soundManager.playDoorOpenSound();
-          sceneManagerInstance.switchSceneWithTransition('scene3', activePhysicsWorld, activePlayer);
-        }
-      }, 150);
+      // Iniciar la secuencia cinemática del portal
+      if (sceneManagerInstance && activePhysicsWorld && activePlayer && finalRoomBox) {
+        const roomCenter = finalRoomBox.getCenter(new THREE.Vector3());
+        startPortalSequence(
+          activeScene,
+          activePlayer,
+          roomCenter,
+          finalRoomBox,
+          sceneManagerInstance,
+          activePhysicsWorld
+        );
+      }
     }
   } else {
+    // Si la tecla presionada es w, a, s, d (movimiento) o l, la ignoramos para no interrumpir
+    if (['w', 'a', 's', 'd', 'l'].includes(key)) {
+      return;
+    }
+
     // Si tenía letras correctas y se equivocó, reproducir un timbrado fuerte como jump scare
     if (helpBuffer.length > 0) {
       soundManager.stopAmbient('phone');
@@ -439,7 +464,7 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
   });
 }
 
-export function updateScene1(time) {
+export function updateScene1(time, player, dt) {
   xmasLights.forEach((light) => {
     if (!light.userData.active) return;
     light.intensity = light.userData.baseIntensity * (0.75 + 0.25 * Math.sin(time * 3.5 + light.userData.phase));
@@ -449,4 +474,7 @@ export function updateScene1(time) {
   activeLights.forEach((light, i) => {
     light.intensity = 6.0 + 2.0 * Math.sin(time * 4.0 + i * 1.5);
   });
+
+  // Actualizar la secuencia cinemática del portal (si está activa)
+  updatePortalSequence(time, dt);
 }

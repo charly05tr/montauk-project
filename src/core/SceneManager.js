@@ -10,12 +10,13 @@ import { setHelpText, fadeToBlack, fadeInFromBlack } from '../ui/Overlay/index.j
 import { soundManager } from './SoundManager.js';
 import { eventBus } from '../utils/eventBus.js';
 import { getRenderer } from './Renderer.js';
+import { assetCache } from '../utils/AssetCache.js';
 
 class SceneManager {
     constructor() {
         this.currentScene = new THREE.Scene();
         this.atmosphere = new AtmosphereManager();
-        this.activeSceneId = 'scene1'; // Iniciamos en la Escena 1 por defecto
+        this.activeSceneId = 'scene1';
         this.previousSceneId = null;
         this.isTransitioning = false;
     }
@@ -26,7 +27,6 @@ class SceneManager {
         player.setMovementBounds?.(null);
         player.setMovementProfile?.(null);
 
-        // Cargar habitación según la escena activa
         if (this.activeSceneId === 'scene1') {
             loadScene1(this.currentScene, physicsWorld, player, this);
         } else if (this.activeSceneId === 'scene2') {
@@ -36,10 +36,9 @@ class SceneManager {
         } else if (this.activeSceneId === 'scene4') {
             loadScene4(this.currentScene, physicsWorld, player);
         }
-        
-        // Inyectar la atmósfera en la escena actual
+
         this.atmosphere.injectIntoScene(this.currentScene);
-        
+
         return this.currentScene;
     }
 
@@ -70,16 +69,14 @@ class SceneManager {
         player.movementSpeed = 8.0;
         player.allowLateral = true;
 
-        // Detener todos los audios de la escena anterior
         soundManager.stopAllAmbient();
         soundManager.stopAllPositional();
 
-        // 1. Limpiar objetos de la escena de Three.js y liberar memoria VRAM (Memory Leak Fix)
         const childrenToRemove = [];
         for (const child of this.currentScene.children) {
             if (
-                child !== player.camera && 
-                child !== cameraLight && 
+                child !== player.camera &&
+                child !== cameraLight &&
                 child !== (cameraLight ? cameraLight.target : null)
             ) {
                 childrenToRemove.push(child);
@@ -93,7 +90,6 @@ class SceneManager {
         this.currentScene.background = null;
         this.currentScene.fog = null;
 
-        // 2. Limpiar cuerpos del mundo físico (Cannon.js)
         const bodies = [...physicsWorld.world.bodies];
         for (const body of bodies) {
             if (body !== player.body) {
@@ -101,7 +97,6 @@ class SceneManager {
             }
         }
 
-        // 3. Cargar la nueva escena
         if (this.activeSceneId === 'scene1') {
             loadScene1(this.currentScene, physicsWorld, player, this);
         } else if (this.activeSceneId === 'scene2') {
@@ -112,7 +107,6 @@ class SceneManager {
             loadScene4(this.currentScene, physicsWorld, player);
         }
 
-        // 4. Volver a inyectar la atmósfera
         this.atmosphere.injectIntoScene(this.currentScene);
     }
 
@@ -122,20 +116,16 @@ class SceneManager {
         if (this.isTransitioning) return;
         this.isTransitioning = true;
 
-        // 1. Desbloquear controles y detener movimiento
         if (player.controls && player.controls.isLocked) {
             player.controls.unlock();
         }
         player.body.velocity.set(0, 0, 0);
         player.body.angularVelocity.set(0, 0, 0);
-        
-        // Bloquear caídas al vacío poniendo a KINEMATIC
+
         player.body.type = CANNON.Body.KINEMATIC;
 
-        // 2. Fundido a negro suave
         await fadeToBlack(1200);
 
-        // 3. Crear promesa para esperar a que la nueva escena se cargue
         const sceneLoadPromise = new Promise((resolve) => {
             const onSceneReady = (e) => {
                 if (e.detail.sceneId === sceneId) {
@@ -146,29 +136,50 @@ class SceneManager {
             eventBus.on('sceneReady', onSceneReady);
         });
 
-        // 4. Disparar el cambio de escena (destruye viejo e inicia carga de lo nuevo)
         this.switchScene(sceneId, physicsWorld, player);
 
-        // 5. Esperar a que la escena esté completamente ensamblada
         await sceneLoadPromise;
 
-        // 5.5 Precompilar Shaders (MATA EL LAG SPIKE)
         const renderer = getRenderer();
         if (renderer) {
-            // Al compilar durante el fundido a negro, el usuario no verá el tirón del primer frame
             renderer.compile(this.currentScene, player.camera);
         }
 
-        // 6. Volver a activar la física dinámica del jugador
         player.body.type = CANNON.Body.DYNAMIC;
         player.body.velocity.set(0, 0, 0);
         player.body.angularVelocity.set(0, 0, 0);
-
-        // 7. Esperar un instante corto y fundir a la nueva escena
         await new Promise((resolve) => setTimeout(resolve, 200));
         await fadeInFromBlack(1200);
 
         this.isTransitioning = false;
+    }
+
+    /**
+     * Precarga los assets pesados de una escena (GLTF, texturas) en el AssetCache
+     * sin añadir nada a la escena actual. Esto permite que al llamar switchScene
+     * después, todo cargue instantáneamente desde cache (sin pantalla negra).
+     * @param {string} sceneId - La escena a precargar ('scene1', 'scene2', 'scene3', 'scene4').
+     * @returns {Promise<void>}
+     */
+    async preloadSceneAssets(sceneId) {
+        const preloadTasks = [];
+
+        if (sceneId === 'scene1') {
+            preloadTasks.push(assetCache.loadGLTF('/models/stranger_things_room/scene.gltf'));
+        } else if (sceneId === 'scene3') {
+            preloadTasks.push(assetCache.loadGLTF('/models/Tunel/tunelST.glb'));
+            // Precargar la textura del túnel
+            preloadTasks.push(new Promise((resolve) => {
+                const loader = new THREE.TextureLoader();
+                loader.load('/models/Tunel/texture/text_tunel.jpeg', resolve, undefined, resolve);
+            }));
+        }
+
+        if (preloadTasks.length > 0) {
+            console.log(`[SceneManager] Precargando assets para ${sceneId}...`);
+            await Promise.all(preloadTasks);
+            console.log(`[SceneManager] Assets de ${sceneId} precargados.`);
+        }
     }
 }
 

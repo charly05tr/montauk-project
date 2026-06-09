@@ -69,13 +69,21 @@ class SoundManager {
             this.ambientSounds.set(key, sound);
 
             const buffer = await this.loadBuffer(path);
+
+            // Evitar condición de carrera si el sonido fue detenido o reemplazado durante la carga
+            if (this.ambientSounds.get(key) !== sound) {
+                return;
+            }
+
             sound.setBuffer(buffer);
             sound.setLoop(loop);
             sound.setVolume(volume);
             sound.play();
             console.log(`SoundManager: Reproduciendo ambiente "${key}"`);
         } catch (err) {
-            this.ambientSounds.delete(key);
+            if (this.ambientSounds.get(key) === sound) {
+                this.ambientSounds.delete(key);
+            }
         }
     }
 
@@ -133,13 +141,21 @@ class SoundManager {
             this.positionalSounds.set(key, { sound, mesh });
 
             const buffer = await this.loadBuffer(path);
+
+            // Evitar condición de carrera si el sonido fue detenido o reemplazado durante la carga
+            if (this.positionalSounds.get(key)?.sound !== sound) {
+                return;
+            }
+
             sound.setBuffer(buffer);
             mesh.add(sound);
             sound.play();
 
             console.log(`SoundManager: Reproduciendo sonido posicional "${key}" atado a ${mesh.name || 'objeto 3D'}`);
         } catch (err) {
-            this.positionalSounds.delete(key);
+            if (this.positionalSounds.get(key)?.sound === sound) {
+                this.positionalSounds.delete(key);
+            }
         }
     }
 
@@ -249,6 +265,105 @@ class SoundManager {
 
         osc2.start(slamTime);
         osc2.stop(slamTime + 0.4);
+    }
+
+    /**
+     * Reproduce el sonido del portal abriéndose.
+     * Si /sounds/portal_opening.mp3 no existe, sintetiza un zumbido electromagnético.
+     */
+    playPortalOpenSound() {
+        this.resumeContext();
+        const path = '/sounds/portal_opening.mp3';
+        this.loadBuffer(path)
+            .then(() => {
+                this.playAmbient('portal_open', path, false, 0.7);
+            })
+            .catch(() => {
+                console.log('SoundManager: Archivo portal_opening.mp3 no encontrado. Generando sonido sintetizado...');
+                this.playSynthesizedPortalOpen();
+            });
+    }
+
+    /**
+     * Genera un efecto sonoro de portal cósmico/electromagnético:
+     * - Zumbido grave creciente (50Hz→120Hz)
+     * - Shimmer agudo (tintinea de frecuencia alta)
+     * - Ráfaga de ruido blanco filtrado
+     * Duración total: ~4 segundos (cubre toda la secuencia del portal).
+     */
+    playSynthesizedPortalOpen() {
+        const ctx = THREE.AudioContext.getContext();
+        if (ctx.state === 'suspended') ctx.resume();
+
+        const now = ctx.currentTime;
+
+        // 1. Zumbido grave creciente (la base del portal)
+        const bassOsc = ctx.createOscillator();
+        const bassGain = ctx.createGain();
+        bassOsc.type = 'sawtooth';
+        bassOsc.frequency.setValueAtTime(50, now);
+        bassOsc.frequency.exponentialRampToValueAtTime(120, now + 3.0);
+        bassGain.gain.setValueAtTime(0, now);
+        bassGain.gain.linearRampToValueAtTime(0.15, now + 0.8);
+        bassGain.gain.linearRampToValueAtTime(0.22, now + 2.5);
+        bassGain.gain.linearRampToValueAtTime(0, now + 4.0);
+
+        const bassFilter = ctx.createBiquadFilter();
+        bassFilter.type = 'lowpass';
+        bassFilter.frequency.setValueAtTime(200, now);
+        bassFilter.frequency.linearRampToValueAtTime(400, now + 3.0);
+
+        bassOsc.connect(bassFilter);
+        bassFilter.connect(bassGain);
+        bassGain.connect(ctx.destination);
+        bassOsc.start(now);
+        bassOsc.stop(now + 4.0);
+
+        // 2. Shimmer agudo (cristalino, como energía)
+        const shimmerOsc = ctx.createOscillator();
+        const shimmerGain = ctx.createGain();
+        shimmerOsc.type = 'sine';
+        shimmerOsc.frequency.setValueAtTime(2200, now);
+        shimmerOsc.frequency.setValueAtTime(3400, now + 1.0);
+        shimmerOsc.frequency.setValueAtTime(1800, now + 2.0);
+        shimmerOsc.frequency.setValueAtTime(4000, now + 3.0);
+
+        shimmerGain.gain.setValueAtTime(0, now);
+        shimmerGain.gain.linearRampToValueAtTime(0.04, now + 1.0);
+        shimmerGain.gain.linearRampToValueAtTime(0.08, now + 2.5);
+        shimmerGain.gain.linearRampToValueAtTime(0, now + 3.8);
+
+        shimmerOsc.connect(shimmerGain);
+        shimmerGain.connect(ctx.destination);
+        shimmerOsc.start(now);
+        shimmerOsc.stop(now + 4.0);
+
+        // 3. Ráfaga de ruido blanco al clímax (succión)
+        const noiseLength = ctx.sampleRate * 2;
+        const noiseBuffer = ctx.createBuffer(1, noiseLength, ctx.sampleRate);
+        const noiseData = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < noiseLength; i++) {
+            noiseData[i] = (Math.random() * 2 - 1) * 0.5;
+        }
+
+        const noiseSource = ctx.createBufferSource();
+        noiseSource.buffer = noiseBuffer;
+        const noiseGain = ctx.createGain();
+        const noiseFilter = ctx.createBiquadFilter();
+        noiseFilter.type = 'bandpass';
+        noiseFilter.frequency.setValueAtTime(800, now + 2.0);
+        noiseFilter.Q.setValueAtTime(1.5, now + 2.0);
+
+        noiseGain.gain.setValueAtTime(0, now);
+        noiseGain.gain.setValueAtTime(0, now + 2.0);
+        noiseGain.gain.linearRampToValueAtTime(0.12, now + 3.0);
+        noiseGain.gain.linearRampToValueAtTime(0, now + 4.0);
+
+        noiseSource.connect(noiseFilter);
+        noiseFilter.connect(noiseGain);
+        noiseGain.connect(ctx.destination);
+        noiseSource.start(now + 2.0);
+        noiseSource.stop(now + 4.0);
     }
 
     /**

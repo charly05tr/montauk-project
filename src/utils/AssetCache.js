@@ -12,7 +12,7 @@ class AssetCache {
      * @param {THREE.LoadingManager} loadingManager Opcional, LoadingManager para trackear el progreso la primera vez.
      * @returns {Promise<Object>} Un objeto { scene } clonado del GLTF original.
      */
-    async loadGLTF(url, loadingManager = null) {
+    async loadGLTF(url, loadingManager = undefined) {
         if (this.cache.has(url)) {
             // Ya está en memoria. Como solo mostramos una escena a la vez y no hemos destruido sus materiales,
             // podemos devolver el objeto original intacto, ahorrando cualquier problema de clonación de SkinnedMeshes.
@@ -21,7 +21,7 @@ class AssetCache {
 
         // Si no está en memoria, usamos una Promesa para envolver el GLTFLoader
         return new Promise((resolve, reject) => {
-            const loader = new GLTFLoader(loadingManager);
+            const loader = loadingManager ? new GLTFLoader(loadingManager) : new GLTFLoader();
             loader.load(
                 url,
                 (gltf) => {

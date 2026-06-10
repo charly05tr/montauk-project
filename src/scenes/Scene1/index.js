@@ -377,6 +377,9 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
 
       scene.add(model);
 
+      // Play audio
+      soundManager.playAmbient('room_ambient', '/sounds/scene2.mp3', true, 0.4);
+
       // Caja definitiva para armar las paredes y físicas perimetrales
       finalRoomBox = new THREE.Box3().setFromObject(model);
       const finalRoomSize = finalRoomBox.getSize(new THREE.Vector3());

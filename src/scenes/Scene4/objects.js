@@ -46,6 +46,14 @@ export function tuneSchoolMaterial(material) {
     src.depthWrite = false;
     src.side = THREE.DoubleSide;
     finalMaterial = optimizeMaterial(src);
+  } else if (name.includes('blood') || name.includes('sangre') || name.includes('mancha') || name.includes('stain') || name.includes('decal') || name.includes('hand') || name.includes('mano') || name.includes('huella')) {
+    // Forzar transparencia para las manchas de sangre y huellas por si en Blender quedaron como opacas
+    src.transparent = true;
+    src.alphaTest = 0.1;
+    src.depthWrite = false;
+    src.side = THREE.DoubleSide;
+    src.polygonOffset = true;
+    src.polygonOffsetFactor = -1;
   } else {
     // 3. Modificaciones Base para ambiente oscuro y tétrico
     if (src.color) src.color.multiplyScalar(0.6); // Oscurecer un poco para dar tensión
@@ -64,6 +72,15 @@ export function tuneSchoolMaterial(material) {
         emissive: src.emissive?.clone() || new THREE.Color(0x000000),
         side: THREE.FrontSide,
         name: src.name || '',
+        transparent: src.transparent || false,
+        opacity: src.opacity !== undefined ? src.opacity : 1.0,
+        alphaTest: src.alphaTest !== undefined ? src.alphaTest : 0.0,
+        depthWrite: src.depthWrite !== undefined ? src.depthWrite : true,
+        polygonOffset: src.polygonOffset || false,
+        polygonOffsetFactor: src.polygonOffsetFactor !== undefined ? src.polygonOffsetFactor : 0,
+        polygonOffsetUnits: src.polygonOffsetUnits !== undefined ? src.polygonOffsetUnits : 0,
+        alphaMap: src.alphaMap || null,
+        blending: src.blending !== undefined ? src.blending : THREE.NormalBlending
       });
       finalMaterial = optimizeMaterial(finalMaterial);
     } else {

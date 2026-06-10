@@ -27,8 +27,8 @@ initOrientationLock();
 const app = document.querySelector('#app')
 
 // 1. Inicializar UI
-initLoadingScreen()
 initOverlay()
+initLoadingScreen()
 
 // Empezar a precargar absolutamente todos los modelos al iniciar
 sceneManager.preloadAllAssets(loadingManager);
@@ -52,8 +52,8 @@ if (!isMobile()) {
     setExitButtonVisible(false);
   });
   player.controls.addEventListener('unlock', () => {
-    setHelpTextVisible(true);
     setExitButtonVisible(true);
+    setHelpTextVisible(true);
   });
 }
 

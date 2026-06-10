@@ -44,10 +44,10 @@ export function initOverlay() {
   floatingTooltip.style.cssText = `
     color: #ff7a2b;
     font-family: 'Courier New', Courier, monospace;
-    font-size: ${isMobile() ? '0.65rem' : '0.95rem'};
-    line-height: ${isMobile() ? '1.2' : '1.5'};
+    font-size: ${isMobile() ? '0.75rem' : '0.95rem'};
+    line-height: ${isMobile() ? '1.3' : '1.5'};
     background: rgba(0, 0, 0, 0.85);
-    padding: ${isMobile() ? '8px 12px' : '16px 20px'};
+    padding: ${isMobile() ? '10px 14px' : '16px 20px'};
     border-radius: 8px;
     border: 1px solid #ff7a2b;
     margin-top: ${isMobile() ? '10px' : '16px'};
@@ -65,8 +65,8 @@ export function initOverlay() {
   floatingButton = document.createElement('div');
   if (isMobile()) {
     floatingButton.style.cssText = `
-      width: 30px;
-      height: 30px;
+      width: 42px;
+      height: 42px;
       border-radius: 50%;
       background: rgba(0, 0, 0, 0.7);
       border: 2px solid #ff7a2b;
@@ -80,7 +80,7 @@ export function initOverlay() {
       pointer-events: auto;
     `;
     floatingButton.innerHTML = `
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="10"/>
         <path d="M12 16v-4"/>
         <path d="M12 8h.01"/>

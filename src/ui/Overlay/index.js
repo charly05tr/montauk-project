@@ -1,3 +1,5 @@
+import { isMobile } from '../../utils/deviceDetection.js';
+
 let helpText
 let floatingHelpContainer
 let floatingTooltip
@@ -18,13 +20,18 @@ export function initOverlay() {
   helpText.textContent = 'Loading scene...'
   document.body.appendChild(helpText)
 
-  // Crear contenedor de la ayuda flotante
+
+
+
+
+  // Crear contenedor de la ayuda flotante (ubicado en la parte superior derecha)
   floatingHelpContainer = document.createElement('div');
+  floatingHelpContainer.classList.add('mobile-ui');
   floatingHelpContainer.style.cssText = `
     position: fixed;
-    bottom: 24px;
+    top: 24px;
     right: 24px;
-    z-index: 100;
+    z-index: 20000;
     display: flex;
     flex-direction: column;
     align-items: flex-end;
@@ -41,7 +48,7 @@ export function initOverlay() {
     padding: 16px 20px;
     border-radius: 8px;
     border: 1px solid #ff7a2b;
-    margin-bottom: 16px;
+    margin-top: 16px;
     opacity: 0;
     transition: opacity 0.3s ease;
     text-align: left;
@@ -51,51 +58,135 @@ export function initOverlay() {
   `;
   floatingTooltip.innerHTML = 'Hover for help';
 
-  // Crear el botón flotante en sí
+  // Crear el botón flotante en sí (pill badge en PC con "Q - Help / Info", círculo en móvil)
   floatingButton = document.createElement('div');
-  floatingButton.style.cssText = `
-    height: 40px;
-    padding: 0 16px;
-    border-radius: 20px;
-    background: rgba(0, 0, 0, 0.7);
-    border: 2px solid #ff7a2b;
-    color: #ff7a2b;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    font-size: 16px;
-    font-family: 'Courier New', Courier, monospace;
-    font-weight: bold;
-    cursor: pointer;
-    box-shadow: 0 0 15px rgba(255, 122, 43, 0.4);
-    transition: transform 0.2s ease, background 0.2s ease;
-    pointer-events: auto;
-  `;
-  floatingButton.textContent = 'Q - Help';
+  if (isMobile()) {
+    floatingButton.style.cssText = `
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.7);
+      border: 2px solid #ff7a2b;
+      color: #ff7a2b;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      box-shadow: 0 0 15px rgba(255, 122, 43, 0.4);
+      transition: transform 0.2s ease, background 0.2s ease;
+      pointer-events: auto;
+    `;
+    floatingButton.innerHTML = `
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M12 16v-4"/>
+        <path d="M12 8h.01"/>
+      </svg>
+    `;
+  } else {
+    floatingButton.style.cssText = `
+      height: 42px;
+      padding: 0 18px;
+      border-radius: 21px;
+      background: rgba(10, 10, 10, 0.75);
+      border: 1px solid rgba(255, 122, 43, 0.3);
+      color: #ff7a2b;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px; /* Esto separa perfectamente INFO de la Q */
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(255, 122, 43, 0.15);
+      backdrop-filter: blur(4px);
+      transition: all 0.2s ease;
+      pointer-events: auto;
+      font-family: 'Courier New', Courier, monospace;
+      white-space: nowrap;
+      user-select: none;
+    `;
+
+    floatingButton.innerHTML = `
+      <span style="font-size: 0.9rem; font-weight: bold; letter-spacing: 1px;">INFO</span>
+      <span style="
+        border: 1px solid rgba(255, 122, 43, 0.6);
+        border-radius: 4px;
+        padding: 0px 6px;
+        font-weight: bold;
+        font-size: 0.9rem;
+        background: rgba(255, 122, 43, 0.1);
+      ">Q</span>
+    `;
+  }
 
   // Función para alternar la visibilidad del tooltip
   toggleFloatingTooltip = (forceShow) => {
     if (!floatingTooltip || !floatingButton) return;
     const isHidden = floatingTooltip.style.display === 'none' || floatingTooltip.style.opacity === '0';
     const shouldShow = forceShow !== undefined ? forceShow : isHidden;
-    
+
     if (shouldShow) {
       floatingTooltip.style.display = 'block';
-      setTimeout(() => floatingTooltip.style.opacity = '1', 10);
+      setTimeout(() => {
+        if (floatingTooltip) floatingTooltip.style.opacity = '1';
+      }, 10);
       floatingButton.style.transform = 'scale(1.05)';
       floatingButton.style.background = 'rgba(255, 122, 43, 0.2)';
+      if (!isMobile()) {
+        floatingButton.style.borderColor = 'rgba(255, 122, 43, 0.8)';
+        floatingButton.style.boxShadow = '0 0 15px rgba(255, 122, 43, 0.4)';
+      }
     } else {
       floatingTooltip.style.opacity = '0';
       setTimeout(() => {
-        if (floatingTooltip.style.opacity === '0') floatingTooltip.style.display = 'none';
+        if (floatingTooltip && floatingTooltip.style.opacity === '0') {
+          floatingTooltip.style.display = 'none';
+        }
       }, 300);
       floatingButton.style.transform = 'scale(1)';
-      floatingButton.style.background = 'rgba(0, 0, 0, 0.7)';
+      if (isMobile()) {
+        floatingButton.style.background = 'rgba(0, 0, 0, 0.7)';
+      } else {
+        floatingButton.style.background = 'rgba(10, 10, 10, 0.75)';
+        floatingButton.style.borderColor = 'rgba(255, 122, 43, 0.3)';
+        floatingButton.style.boxShadow = '0 0 10px rgba(255, 122, 43, 0.15)';
+      }
     }
   };
 
-  floatingButton.addEventListener('mouseenter', () => toggleFloatingTooltip(true));
-  floatingButton.addEventListener('mouseleave', () => toggleFloatingTooltip(false));
+  // Efecto de hover visual únicamente sobre el botón sin abrir automáticamente el tooltip
+  floatingButton.addEventListener('mouseenter', () => {
+    const isOpen = floatingTooltip && floatingTooltip.style.display === 'block' && floatingTooltip.style.opacity === '1';
+    if (!isOpen) {
+      floatingButton.style.transform = 'scale(1.05)';
+      if (isMobile()) {
+        floatingButton.style.background = 'rgba(255, 122, 43, 0.2)';
+      } else {
+        floatingButton.style.background = 'rgba(255, 122, 43, 0.15)';
+        floatingButton.style.borderColor = 'rgba(255, 122, 43, 0.8)';
+        floatingButton.style.boxShadow = '0 0 15px rgba(255, 122, 43, 0.4)';
+      }
+    }
+  });
+
+  floatingButton.addEventListener('mouseleave', () => {
+    const isOpen = floatingTooltip && floatingTooltip.style.display === 'block' && floatingTooltip.style.opacity === '1';
+    if (!isOpen) {
+      floatingButton.style.transform = 'scale(1)';
+      if (isMobile()) {
+        floatingButton.style.background = 'rgba(0, 0, 0, 0.7)';
+      } else {
+        floatingButton.style.background = 'rgba(10, 10, 10, 0.75)';
+        floatingButton.style.borderColor = 'rgba(255, 122, 43, 0.3)';
+        floatingButton.style.boxShadow = '0 0 10px rgba(255, 122, 43, 0.15)';
+      }
+    }
+  });
+
+  // Habilitar toque en pantalla o click para alternar la ayuda
+  floatingButton.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleFloatingTooltip();
+  });
 
   // Toggle con tecla Q
   window.addEventListener('keydown', (e) => {
@@ -104,8 +195,8 @@ export function initOverlay() {
     }
   });
 
-  floatingHelpContainer.appendChild(floatingTooltip);
   floatingHelpContainer.appendChild(floatingButton);
+  floatingHelpContainer.appendChild(floatingTooltip);
   document.body.appendChild(floatingHelpContainer);
 
   // Crear el overlay de transición a pantalla completa
@@ -127,6 +218,18 @@ export function setHelpText(text) {
 }
 
 export function setFloatingHelp(htmlContent) {
+  if (isMobile()) {
+    // Reemplazar textos de controles de PC por equivalentes de móvil
+    htmlContent = htmlContent
+      .replace(/Click to enter/gi, 'Touch screen to start')
+      .replace(/WASD to move/gi, 'Joystick to move')
+      .replace(/W\/S to move forward\/backward/gi, 'Joystick to move')
+      .replace(/F to toggle flashlight/gi, 'Flashlight button to toggle light')
+      .replace(/Press ESC to unlock pointer/gi, 'Drag screen to look around')
+      .replace(/Press "L" to toggle Demogorgon flash/gi, 'Touch anywhere to look')
+      .replace(/Type "HELP" to teleport/gi, 'Keypad button to type "HELP"');
+  }
+
   if (floatingTooltip) {
     floatingTooltip.innerHTML = htmlContent;
   }

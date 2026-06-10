@@ -6,6 +6,7 @@ import { initGlobalLights, updateGlobalLights } from './core/Lights.js'
 import { sceneManager } from './core/SceneManager.js'
 import { PhysicsWorld } from './physics/PhysicsWorld.js'
 import { Player } from './core/Player.js'
+import { initMobileControls } from './ui/MobileControls/index.js'
 
 // --- POST-PROCESSING IMPORTS ---
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -29,6 +30,9 @@ initLandingPage(() => {
   // pero luego la reemplazamos cuando obtenemos la escena real
   const player = new Player(sceneManager.getScene(), physicsWorld)
   const scene = sceneManager.initScene(physicsWorld, player)
+
+  // 3.5. Inicializar controles móviles si es un dispositivo táctil
+  initMobileControls(player)
 
   // 4. Inicializar Core (Renderer)
   const renderer = initRenderer(app)

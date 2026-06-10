@@ -3,6 +3,7 @@ import * as CANNON from 'cannon-es';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { setHelpTextVisible } from '../ui/Overlay/index.js';
 import { soundManager } from './SoundManager.js';
+import { isMobile } from '../utils/deviceDetection.js';
 
 export class Player {
     constructor(scene, physicsWorld) {
@@ -54,12 +55,20 @@ export class Player {
         this.controls.pointerSpeed = 0.70;
         this.speed = 8.0;
 
-        document.body.addEventListener('click', () => {
-            soundManager.resumeContext();
-            if (!this.controls.isLocked) {
-                this.controls.lock();
-            }
-        });
+        const isMobileDevice = isMobile();
+        if (!isMobileDevice) {
+            document.body.addEventListener('click', () => {
+                soundManager.resumeContext();
+                if (!this.controls.isLocked) {
+                    this.controls.lock();
+                }
+            });
+        } else {
+            // En móvil, reanudar contexto de audio al tocar la pantalla por primera vez
+            document.body.addEventListener('touchstart', () => {
+                soundManager.resumeContext();
+            }, { once: true });
+        }
 
         this.controls.addEventListener('lock', () => setHelpTextVisible(false));
         this.controls.addEventListener('unlock', () => setHelpTextVisible(true));
@@ -215,7 +224,7 @@ export class Player {
             return;
         }
 
-        if (!this.controls.isLocked) return;
+        if (!isMobile() && !this.controls.isLocked) return;
 
         const x = this.allowLateral ? (Number(this.keys.d) - Number(this.keys.a)) : 0;
         const z = Number(this.keys.s) - Number(this.keys.w);

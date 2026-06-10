@@ -48,6 +48,10 @@ function cleanupAlphabetState() {
   alphabetBulbs.length = 0;
   // Limpiar objetos del portal si existían
   cleanupPortalSequence();
+
+  // Desregistrar listeners de interacción con bombillas
+  window.removeEventListener('pointerdown', onBulbPointerDown);
+  window.removeEventListener('pointerup', onBulbPointerUp);
 }
 
 /**
@@ -164,6 +168,78 @@ function illuminateLetter(letter, scene) {
   });
 }
 
+// Variables para control de interacción con bombillas
+let pointerStartPos = { x: 0, y: 0 };
+let pointerStartTime = 0;
+
+function onBulbPointerDown(e) {
+  pointerStartPos = { x: e.clientX, y: e.clientY };
+  pointerStartTime = performance.now();
+}
+
+function onBulbPointerUp(e) {
+  if (!sceneManagerInstance || sceneManagerInstance.activeSceneId !== 'scene1') return;
+  if (helpTriggered) return;
+
+  // Evitar interactuar si se hizo tap en algún botón o contenedor de la interfaz de usuario (mobile/help)
+  if (e.target.closest('.mobile-ui') || e.target.closest('#landing-page') || e.target.closest('#loading-screen')) {
+    return;
+  }
+
+  const deltaX = e.clientX - pointerStartPos.x;
+  const deltaY = e.clientY - pointerStartPos.y;
+  const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+  const elapsed = performance.now() - pointerStartTime;
+
+  // Si fue un toque/click estático (no un arrastre para mirar a los lados)
+  if (distance < 8 && elapsed < 350) {
+    handleBulbTap(e.clientX, e.clientY);
+  }
+}
+
+function handleBulbTap(clientX, clientY) {
+  if (!activePlayer || !activeScene) return;
+
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+
+  // Convertir a coordenadas normalizadas
+  mouse.x = (clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(clientY / window.innerHeight) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, activePlayer.camera);
+
+  // Obtener los nodos de colisión de todas las bombillas mapeadas
+  const targets = alphabetBulbs.map(b => b.node);
+  if (targets.length === 0) return;
+
+  const intersects = raycaster.intersectObjects(targets, true);
+
+  if (intersects.length > 0) {
+    const hitObject = intersects[0].object;
+
+    // Buscar a qué bombilla mapeada pertenece el objeto colisionado
+    let matchedBulb = null;
+    for (const bulb of alphabetBulbs) {
+      let curr = hitObject;
+      while (curr) {
+        if (curr === bulb.node) {
+          matchedBulb = bulb;
+          break;
+        }
+        curr = curr.parent;
+      }
+      if (matchedBulb) break;
+    }
+
+    if (matchedBulb && matchedBulb.letter) {
+      console.log(`[Bulb Interaction] Tapped bulb: ${matchedBulb.letter.toUpperCase()}`);
+      // Simular evento keydown para reutilizar la lógica ya construida
+      onAlphabetKeyDown({ key: matchedBulb.letter });
+    }
+  }
+}
+
 /**
  * Maneja el input del teclado para el sistema del abecedario.
  * Se llama desde el listener de keydown.
@@ -224,8 +300,8 @@ function onAlphabetKeyDown(e) {
       }
     }
   } else {
-    // Si la tecla presionada es w, a, s, d (movimiento) o l, la ignoramos para no interrumpir
-    if (['w', 'a', 's', 'd', 'l'].includes(key)) {
+    // Si la tecla presionada es w, a, s, d (movimiento), l o q (info/ayuda), la ignoramos para no interrumpir
+    if (['w', 'a', 's', 'd', 'l', 'q'].includes(key)) {
       return;
     }
 
@@ -256,6 +332,10 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
   activePhysicsWorld = physicsWorld;
   activeScene = scene;
   cleanupAlphabetState();
+
+  // Registrar listeners de interacción con bombillas
+  window.addEventListener('pointerdown', onBulbPointerDown);
+  window.addEventListener('pointerup', onBulbPointerUp);
 
   // Luces Base (La posición se ajustará matemáticamente después de cargar la sala)
   redLight = new THREE.PointLight(0xff2a12, 0.05, 20, 2)

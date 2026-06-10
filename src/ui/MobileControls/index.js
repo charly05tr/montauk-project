@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { isMobile } from '../../utils/deviceDetection.js';
 import { sceneManager } from '../../core/SceneManager.js';
+import { eventBus } from '../../utils/eventBus.js';
 import { toggleDemogorgon } from '../../scenes/Scene2/index.js';
 
 let joystickContainer = null;
@@ -172,8 +173,9 @@ export function initMobileControls(player) {
     </svg>
   `;
 
-  function updateDemogorgonBtn() {
-    demogorgonBtn.style.display = sceneManager.activeSceneId === 'scene2' ? 'flex' : 'none';
+  function updateDemogorgonBtn(e) {
+    const sceneId = e ? e.detail.sceneId : sceneManager.activeSceneId;
+    demogorgonBtn.style.display = sceneId === 'scene2' ? 'flex' : 'none';
   }
   demogorgonBtn.addEventListener('touchend', (e) => {
     e.preventDefault();
@@ -192,7 +194,8 @@ export function initMobileControls(player) {
   root.appendChild(btnContainer);
 
   // Update demogorgon button visibility on scene changes
-  setInterval(updateDemogorgonBtn, 500);
+  updateDemogorgonBtn();
+  eventBus.on('sceneReady', updateDemogorgonBtn);
 
   document.body.appendChild(root);
 

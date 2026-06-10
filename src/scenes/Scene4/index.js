@@ -40,7 +40,7 @@ export function loadSchoolScene(scene, physicsWorld, player) {
       }
 
       // Play audio
-      soundManager.playAmbient('school_ambient', '/sounds/general_music.mp3', true, 0.2);
+      soundManager.playAmbient('school_ambient', '/sounds/scene2.mp3', true, 0.4);
 
       model.updateMatrixWorld(true);
 

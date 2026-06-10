@@ -159,31 +159,35 @@ class SceneManager {
     }
 
     /**
-     * Precarga los assets pesados de una escena (GLTF, texturas) en el AssetCache
-     * sin añadir nada a la escena actual. Esto permite que al llamar switchScene
-     * después, todo cargue instantáneamente desde cache (sin pantalla negra).
-     * @param {string} sceneId - La escena a precargar ('scene1', 'scene2', 'scene3', 'scene4').
+     * Precarga TODOS los assets pesados de todas las escenas al inicio,
+     * usando el loadingManager para que la barra de carga refleje el progreso total.
+     * @param {THREE.LoadingManager} loadingManager - Manejador de carga de la UI.
      * @returns {Promise<void>}
      */
-    async preloadSceneAssets(sceneId) {
+    async preloadAllAssets(loadingManager) {
         const preloadTasks = [];
 
-        if (sceneId === 'scene1') {
-            preloadTasks.push(assetCache.loadGLTF('/models/stranger_things_room/scene.gltf'));
-        } else if (sceneId === 'scene3') {
-            preloadTasks.push(assetCache.loadGLTF('/models/Tunel/tunelST.glb'));
-            // Precargar la textura del túnel
-            preloadTasks.push(new Promise((resolve) => {
-                const loader = new THREE.TextureLoader();
-                loader.load('/models/Tunel/texture/text_tunel.jpeg', resolve, undefined, resolve);
-            }));
-        }
+        console.log(`[SceneManager] Iniciando precarga masiva de assets...`);
 
-        if (preloadTasks.length > 0) {
-            console.log(`[SceneManager] Precargando assets para ${sceneId}...`);
-            await Promise.all(preloadTasks);
-            console.log(`[SceneManager] Assets de ${sceneId} precargados.`);
-        }
+        // Scene 1
+        preloadTasks.push(assetCache.loadGLTF('/models/stranger_things_room/scene.gltf', loadingManager));
+        
+        // Scene 2
+        preloadTasks.push(assetCache.loadGLTF('/models/Velez_Paiz.glb', loadingManager));
+        preloadTasks.push(assetCache.loadGLTF('/models/demogorgon.glb', loadingManager));
+
+        // Scene 3
+        preloadTasks.push(assetCache.loadGLTF('/models/Tunel/tunelST.glb', loadingManager));
+        preloadTasks.push(new Promise((resolve) => {
+            const loader = new THREE.TextureLoader(loadingManager);
+            loader.load('/models/Tunel/texture/text_tunel.jpeg', resolve, undefined, resolve);
+        }));
+
+        // Scene 4
+        preloadTasks.push(assetCache.loadGLTF('/models/Escuela.glb', loadingManager));
+
+        await Promise.all(preloadTasks);
+        console.log(`[SceneManager] Precarga masiva completada.`);
     }
 }
 

@@ -114,7 +114,7 @@ export function startPortalSequence(scene, player, roomCenter, roomBox, sceneMan
   }
 
   // 4. Iniciar precarga de Scene 3 en paralelo
-  _preloadPromise = sceneManager.preloadSceneAssets('scene3');
+  _preloadPromise = Promise.resolve();
 
   // 5. Crear los objetos visuales
   createPortalVisuals(scene);

@@ -44,13 +44,14 @@ export function initOverlay() {
   floatingTooltip.style.cssText = `
     color: #ff7a2b;
     font-family: 'Courier New', Courier, monospace;
-    font-size: 0.95rem;
-    line-height: 1.5;
+    font-size: ${isMobile() ? '0.75rem' : '0.95rem'};
+    line-height: ${isMobile() ? '1.3' : '1.5'};
     background: rgba(0, 0, 0, 0.85);
-    padding: 16px 20px;
+    padding: ${isMobile() ? '10px 14px' : '16px 20px'};
     border-radius: 8px;
     border: 1px solid #ff7a2b;
-    margin-top: 16px;
+    margin-top: ${isMobile() ? '10px' : '16px'};
+    max-width: ${isMobile() ? '75vw' : 'none'};
     opacity: 0;
     transition: opacity 0.3s ease;
     text-align: left;
@@ -185,6 +186,11 @@ export function initOverlay() {
   });
 
   // Habilitar toque en pantalla o click para alternar la ayuda
+  floatingButton.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleFloatingTooltip();
+  }, { passive: false });
   floatingButton.addEventListener('click', (e) => {
     e.stopPropagation();
     toggleFloatingTooltip();

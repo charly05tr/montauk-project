@@ -426,14 +426,11 @@ export function initLandingPage(onStartCallback, player) {
   }
   controlsPanel.appendChild(controlsGrid);
 
-  enterButton.addEventListener('click', (e) => {
+  function enterGame(e) {
     e.stopPropagation();
     enableOrientationLock();
-    
-    // Reanudar contexto de audio de forma segura
     soundManager.resumeContext();
 
-    // Activar PointerLock de inmediato si estamos en PC
     if (player && player.controls && !isMobile()) {
       player.controls.lock();
     }
@@ -447,7 +444,13 @@ export function initLandingPage(onStartCallback, player) {
         onStartCallback();
       }
     }, 1500);
-  });
+  }
+
+  enterButton.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    enterGame(e);
+  }, { passive: false });
+  enterButton.addEventListener('click', enterGame);
 
   wrapper.appendChild(title);
   wrapper.appendChild(subtitle);

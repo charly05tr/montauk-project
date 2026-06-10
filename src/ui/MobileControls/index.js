@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { isMobile } from '../../utils/deviceDetection.js';
+import { sceneManager } from '../../core/SceneManager.js';
+import { toggleDemogorgon } from '../../scenes/Scene2/index.js';
 
 let joystickContainer = null;
 let joystickKnob = null;
@@ -37,7 +39,19 @@ export function initMobileControls(player) {
     -webkit-user-select: none;
   `;
 
-  // 2. Agregar estilos CSS para la UI de mobile
+  // 2. Prevenir gestos del navegador en mobile (pull-to-refresh, swipe-nav, overscroll)
+  const preventBrowserGestures = document.createElement('style');
+  preventBrowserGestures.textContent = `
+    html, body {
+      touch-action: none;
+      -webkit-touch-callout: none;
+      overscroll-behavior: none;
+      overflow: hidden;
+    }
+  `;
+  document.head.appendChild(preventBrowserGestures);
+
+  // 3. Agregar estilos CSS para la UI de mobile
   const style = document.createElement('style');
   style.textContent = `
     .mobile-btn {
@@ -147,8 +161,38 @@ export function initMobileControls(player) {
       soundManager.playKeyboardSlice('/sounds/keyboard.mp3', 0.8);
     });
   });
+  // Botón Demogorgon (Scene 2 - mobile)
+  const demogorgonBtn = document.createElement('div');
+  demogorgonBtn.className = 'mobile-btn';
+  demogorgonBtn.style.display = 'none';
+  demogorgonBtn.innerHTML = `
+    <svg width="30" height="30" viewBox="0 0 100 100" fill="currentColor">
+      <path d="M50 20 L60 40 L85 30 L65 50 L85 70 L60 60 L50 85 L40 60 L15 70 L35 50 L15 30 L40 40 Z"/>
+      <circle cx="50" cy="50" r="12" opacity="0.3"/>
+    </svg>
+  `;
+
+  function updateDemogorgonBtn() {
+    demogorgonBtn.style.display = sceneManager.activeSceneId === 'scene2' ? 'flex' : 'none';
+  }
+  demogorgonBtn.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (activePlayer) toggleDemogorgon(activePlayer);
+    demogorgonBtn.classList.toggle('active');
+  }, { passive: false });
+  demogorgonBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (activePlayer) toggleDemogorgon(activePlayer);
+    demogorgonBtn.classList.toggle('active');
+  });
+
+  btnContainer.appendChild(demogorgonBtn);
   btnContainer.appendChild(flashlightBtn);
   root.appendChild(btnContainer);
+
+  // Update demogorgon button visibility on scene changes
+  setInterval(updateDemogorgonBtn, 500);
 
   document.body.appendChild(root);
 
@@ -163,9 +207,10 @@ export function initMobileControls(player) {
       x: rect.left + rect.width / 2,
       y: rect.top + rect.height / 2
     };
-  }, { passive: true });
+  }, { passive: false });
 
   window.addEventListener('touchmove', (e) => {
+    e.preventDefault();
     if (!joystickActive) return;
 
     let touch = null;
@@ -205,7 +250,7 @@ export function initMobileControls(player) {
     player.keys.s = joystickDir.y > 0.3;
     player.keys.a = joystickDir.x < -0.3;
     player.keys.d = joystickDir.x > 0.3;
-  }, { passive: true });
+  }, { passive: false });
 
   const resetJoystick = () => {
     if (!joystickActive) return;
@@ -228,8 +273,9 @@ export function initMobileControls(player) {
   window.addEventListener('touchstart', (e) => {
     // Evitar que toque de UI se use para mirar alrededor
     if (e.target.closest('.mobile-ui') || e.target.closest('#landing-page') || e.target.closest('#loading-screen')) return;
+    e.preventDefault();
     
-    const touch = e.touches[0];
+    const touch = e.changedTouches[0];
     lookActive = true;
     lookTouchId = touch.identifier;
     lookStartPos = { x: touch.clientX, y: touch.clientY };
@@ -238,9 +284,10 @@ export function initMobileControls(player) {
     euler.setFromQuaternion(player.camera.quaternion);
     baseYaw = euler.y;
     basePitch = euler.x;
-  }, { passive: true });
+  }, { passive: false });
 
   window.addEventListener('touchmove', (e) => {
+    e.preventDefault();
     if (!lookActive) return;
 
     let touch = null;
@@ -261,7 +308,7 @@ export function initMobileControls(player) {
     const pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, basePitch - deltaY * sensitivity));
 
     player.camera.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
-  }, { passive: true });
+  }, { passive: false });
 
   const stopLooking = (e) => {
     if (!lookActive) return;

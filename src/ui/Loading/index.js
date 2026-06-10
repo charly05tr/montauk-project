@@ -5,7 +5,7 @@ let loadingBar
 let loadingText
 
 let initialAssetsLoaded = false
-let mainSceneReady      = false
+let mainSceneReady = false
 let loadingScreenHidden = false
 
 export function initLoadingScreen() {
@@ -24,7 +24,7 @@ export function initLoadingScreen() {
     <div id="loading-text" style="margin-top:0.75rem;font-size:0.9rem;opacity:0.7;">Cargando...</div>
   `
   document.body.appendChild(loadingScreen)
-  loadingBar  = loadingScreen.querySelector('#loading-bar')
+  loadingBar = loadingScreen.querySelector('#loading-bar')
   loadingText = loadingScreen.querySelector('#loading-text')
 }
 

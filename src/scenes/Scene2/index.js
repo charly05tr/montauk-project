@@ -254,6 +254,7 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
           }
         });
 
+        demogorgonModel.visible = false;
         scene.add(demogorgonModel);
 
         if (demoGltf.animations && demoGltf.animations.length > 0) {
@@ -401,6 +402,47 @@ export function updateScene2(time, player, dt) {
     }
     if (whiteLight2) {
       whiteLight2.intensity = 0.6 * (0.8 + 0.2 * Math.cos(time * 3.0));
+    }
+  }
+}
+
+export function toggleDemogorgon(player) {
+  isFlickeringActive = !isFlickeringActive;
+
+  if (demogorgonModel) {
+    demogorgonModel.visible = isFlickeringActive;
+  }
+  if (flashAmbient) {
+    flashAmbient.intensity = isFlickeringActive ? 0.5 : 0.0;
+  }
+
+  if (demogorgonBody) {
+    if (isFlickeringActive) {
+      const direction = new THREE.Vector3(0, 0, -1);
+      direction.applyQuaternion(player.camera.quaternion);
+      direction.y = 0;
+      if (direction.lengthSq() > 0) direction.normalize();
+
+      const spawnX = player.camera.position.x + direction.x * 8;
+      const spawnZ = player.camera.position.z + direction.z * 8;
+      const floorY = player.camera.position.y - 1.5;
+
+      demogorgonBody.type = CANNON.Body.DYNAMIC;
+      demogorgonBody.collisionFilterGroup = 1;
+      demogorgonBody.collisionFilterMask = -1;
+      demogorgonBody.position.set(spawnX, floorY + 0.6, spawnZ);
+      demogorgonBody.velocity.set(0, 0, 0);
+      demogorgonBody.updateMassProperties();
+      demogorgonBody.wakeUp();
+    } else {
+      demogorgonBody.type = CANNON.Body.KINEMATIC;
+      demogorgonBody.collisionFilterGroup = 0;
+      demogorgonBody.collisionFilterMask = 0;
+      demogorgonBody.velocity.set(0, 0, 0);
+      demogorgonBody.sleep();
+      if (demogorgonModel) {
+        demogorgonModel.visible = false;
+      }
     }
   }
 }

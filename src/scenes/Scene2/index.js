@@ -19,11 +19,17 @@ let sceneManagerInstance = null;
 
 let portalGateNode = null;
 let activePhysicsWorld = null;
+let portalLight = null;
+let isPortalIlluminating = false;
+let portalIlluminationTimer = 0;
 
 export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
   sceneManagerInstance = sceneManager;
   activePhysicsWorld = physicsWorld;
   portalGateNode = null;
+  portalLight = null;
+  isPortalIlluminating = false;
+  portalIlluminationTimer = 0;
   // Reset flicker state each time the scene loads
   isFlickeringActive = false;
   // Luces Base (La posición se ajustará matemáticamente después de cargar la sala)
@@ -132,6 +138,9 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
         if (nodeName === 'object_9') {
           portalGateNode = child;
           console.log('[PORTAL] Gate node detected (Object_9):', child.name);
+          
+          portalLight = new THREE.PointLight(0xff4400, 0, 20, 2); // Naranja rojizo
+          scene.add(portalLight);
         }
         child.material = Array.isArray(child.material)
           ? child.material.map(tuneHospitalMaterial)
@@ -300,9 +309,34 @@ export function updateScene2(time, player, dt) {
     const distXZ = Math.sqrt(dx * dx + dz * dz);
 
     if (distXZ < 3.0 && Math.abs(playerPos.y - portalPos.y) < 4.0) {
-      console.log('[PORTAL] Jugador llegó al portal. Transicionando a Scene 3 (Túnel)...');
-      if (sceneManagerInstance && activePhysicsWorld) {
+      if (!isPortalIlluminating && !sceneManagerInstance?.isTransitioning) {
+        console.log('[PORTAL] Jugador llegó al portal. Iniciando iluminación...');
+        isPortalIlluminating = true;
+        portalIlluminationTimer = 0;
         soundManager.playDoorOpenSound();
+      }
+    }
+  }
+
+  // Animación de iluminación del portal (el portal emite luz que crece y parpadea)
+  if (isPortalIlluminating && portalLight) {
+    portalIlluminationTimer += dt;
+    
+    // Parpadeo rápido errático y crecimiento exponencial de intensidad
+    const flicker = Math.random() * 8.0;
+    portalLight.intensity = (Math.pow(portalIlluminationTimer * 3.5, 2)) + flicker;
+    
+    if (portalGateNode) {
+      const portalPos = new THREE.Vector3();
+      portalGateNode.getWorldPosition(portalPos);
+      portalLight.position.copy(portalPos);
+      // Mover la luz un pelín hacia el jugador para iluminar mejor las paredes adyacentes
+      portalLight.position.z += 1.0; 
+    }
+
+    // A los 1.5 segundos cambiamos de escena
+    if (portalIlluminationTimer >= 1.5 && !sceneManagerInstance?.isTransitioning) {
+      if (sceneManagerInstance && activePhysicsWorld) {
         sceneManagerInstance.switchSceneWithTransition('scene3', activePhysicsWorld, player);
       }
     }

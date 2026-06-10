@@ -16,14 +16,15 @@ class SoundManager {
         console.log('SoundManager: AudioListener registrado.');
     }
 
-    resumeContext() {
+    async resumeContext() {
         const context = THREE.AudioContext.getContext();
         if (context.state === 'suspended') {
-            context.resume().then(() => {
+            try {
+                await context.resume();
                 console.log('SoundManager: AudioContext reanudado.');
-            }).catch(err => {
+            } catch (err) {
                 console.error('SoundManager: Error al reanudar AudioContext', err);
-            });
+            }
         }
     }
 
@@ -433,7 +434,7 @@ class SoundManager {
      * Reproduce una rodaja (slice) recortada de steps.mp3 correspondiente al siguiente paso en el ciclo.
      */
     async playFootstepSlice(path, volume = 0.5) {
-        this.resumeContext();
+        await this.resumeContext();
 
         let buffer;
         try {
@@ -545,7 +546,7 @@ class SoundManager {
      * Reproduce una rodaja (slice) recortada de keyboard.mp3 correspondiente al siguiente clic en el ciclo.
      */
     async playKeyboardSlice(path, volume = 0.5) {
-        this.resumeContext();
+        await this.resumeContext();
 
         let buffer;
         try {

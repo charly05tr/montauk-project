@@ -3,8 +3,20 @@ import { isMobile } from './deviceDetection.js';
 let isEnforcing = false;
 let overlayElement = null;
 
+function requestFullscreen() {
+  const el = document.documentElement;
+  if (el.requestFullscreen) {
+    el.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+  } else if (el.webkitRequestFullscreen) {
+    el.webkitRequestFullscreen();
+  } else if (el.msRequestFullscreen) {
+    el.msRequestFullscreen();
+  }
+}
+
 export function enableOrientationLock() {
   isEnforcing = true;
+  requestFullscreen();
   if (overlayElement) {
     checkOrientation();
   }
@@ -29,7 +41,8 @@ function checkOrientation() {
     overlayElement.classList.remove('visible');
     document.documentElement.style.overflow = '';
     // El juego siempre maneja overflow hidden en el body
-    document.body.style.overflow = 'hidden'; 
+    document.body.style.overflow = 'hidden';
+    requestFullscreen();
   }
 }
 

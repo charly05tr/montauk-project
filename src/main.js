@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { initLoadingScreen } from './ui/Loading/index.js'
+import { initLoadingScreen, loadingManager } from './ui/Loading/index.js'
 import { initOverlay, setExitCallback, setExitButtonVisible } from './ui/Overlay/index.js'
 import { soundManager } from './core/SoundManager.js'
 import { initRenderer } from './core/Renderer.js'
@@ -27,6 +27,9 @@ const app = document.querySelector('#app')
 // 1. Inicializar UI
 initLoadingScreen()
 initOverlay()
+
+// Empezar a precargar absolutamente todos los modelos al iniciar
+sceneManager.preloadAllAssets(loadingManager);
 
 // 2. Físicas
 const physicsWorld = new PhysicsWorld()

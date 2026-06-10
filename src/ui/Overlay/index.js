@@ -5,6 +5,8 @@ let floatingHelpContainer
 let floatingTooltip
 let floatingButton
 let transitionOverlay
+let exitButton
+let exitCallback = null;
 
 // Función global para alternar la visibilidad del tooltip desde fuera si es necesario
 export let toggleFloatingTooltip = null;
@@ -211,6 +213,100 @@ export function initOverlay() {
     transition: opacity 1.2s ease-in-out;
   `
   document.body.appendChild(transitionOverlay)
+
+  // Crear el botón de salida (se muestra al presionar ESC / estar fuera de PointerLock)
+  exitButton = document.createElement('button');
+  exitButton.className = 'mobile-ui'; // Ignorar toques en móvil
+  exitButton.style.cssText = `
+    position: fixed;
+    top: 24px;
+    left: 24px;
+    height: 42px;
+    padding: 0 20px;
+    border-radius: 21px;
+    background: rgba(10, 5, 5, 0.75);
+    border: 1px solid rgba(255, 15, 15, 0.3);
+    color: #ff0f0f;
+    display: none;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(255, 15, 15, 0.15);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    transition: all 0.2s ease;
+    pointer-events: auto;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.9rem;
+    font-weight: bold;
+    white-space: nowrap;
+    user-select: none;
+    z-index: 20000;
+  `;
+  
+  exitButton.innerHTML = `
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+      <polyline points="16 17 21 12 16 7"/>
+      <line x1="21" y1="12" x2="9" y2="12"/>
+    </svg>
+    <span>EXIT FACILITY</span>
+  `;
+
+  exitButton.addEventListener('mouseenter', () => {
+    exitButton.style.transform = 'scale(1.05)';
+    exitButton.style.background = 'rgba(255, 15, 15, 0.15)';
+    exitButton.style.borderColor = 'rgba(255, 15, 15, 0.8)';
+    exitButton.style.boxShadow = '0 0 15px rgba(255, 15, 15, 0.4)';
+  });
+
+  exitButton.addEventListener('mouseleave', () => {
+    exitButton.style.transform = 'scale(1)';
+    exitButton.style.background = 'rgba(10, 5, 5, 0.75)';
+    exitButton.style.borderColor = 'rgba(255, 15, 15, 0.3)';
+    exitButton.style.boxShadow = '0 0 10px rgba(255, 15, 15, 0.15)';
+  });
+
+  exitButton.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    exitButton.style.pointerEvents = 'none';
+    if (transitionOverlay) {
+      transitionOverlay.style.zIndex = '1000000';
+    }
+    await fadeToBlack(800);
+    if (exitCallback) {
+      await exitCallback();
+    } else {
+      window.location.reload();
+      return;
+    }
+    await fadeInFromBlack(800);
+    if (transitionOverlay) {
+      transitionOverlay.style.zIndex = '9990';
+    }
+    exitButton.style.pointerEvents = 'auto';
+  });
+
+  document.body.appendChild(exitButton);
+}
+
+export function setExitCallback(callback) {
+  exitCallback = callback;
+}
+
+export function setExitButtonVisible(visible) {
+  if (!exitButton) return;
+  if (isMobile()) {
+    exitButton.style.display = 'none';
+    return;
+  }
+  // Si la landing page está visible en el DOM, no mostrar el botón de salida
+  if (document.getElementById('landing-page')) {
+    exitButton.style.display = 'none';
+    return;
+  }
+  exitButton.style.display = visible ? 'flex' : 'none';
 }
 
 export function setHelpText(text) {

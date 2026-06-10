@@ -91,9 +91,9 @@ export function startPortalSequence(scene, player, roomCenter, roomBox, sceneMan
     roomBox.max.z - 0.12               // Justo delante de la pared trasera
   );
 
-  // 2. Bloquear controles del jugador
-  if (player.controls && player.controls.isLocked) {
-    player.controls.unlock();
+  // Deshabilitar controles de rotación de cámara, pero mantener el PointerLock bloqueado
+  if (player.controls) {
+    player.controls.enabled = false;
   }
   player.body.velocity.set(0, 0, 0);
   player.body.angularVelocity.set(0, 0, 0);
@@ -548,6 +548,10 @@ async function executeSceneSwap() {
 
   // Fade in directo al túnel
   await fadeInFromBlack(800);
+
+  if (_player.controls) {
+    _player.controls.enabled = true;
+  }
 
   _sceneManager.isTransitioning = false;
 

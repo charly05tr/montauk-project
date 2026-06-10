@@ -116,8 +116,8 @@ class SceneManager {
         if (this.isTransitioning) return;
         this.isTransitioning = true;
 
-        if (player.controls && player.controls.isLocked) {
-            player.controls.unlock();
+        if (player.controls) {
+            player.controls.enabled = false;
         }
         player.body.velocity.set(0, 0, 0);
         player.body.angularVelocity.set(0, 0, 0);
@@ -150,6 +150,10 @@ class SceneManager {
         player.body.angularVelocity.set(0, 0, 0);
         await new Promise((resolve) => setTimeout(resolve, 200));
         await fadeInFromBlack(1200);
+
+        if (player.controls) {
+            player.controls.enabled = true;
+        }
 
         this.isTransitioning = false;
     }

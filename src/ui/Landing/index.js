@@ -1,7 +1,8 @@
 import { isMobile } from '../../utils/deviceDetection.js';
 import { enableOrientationLock } from '../../utils/orientationLock.js';
+import { soundManager } from '../../core/SoundManager.js';
 
-export function initLandingPage(onStartCallback) {
+export function initLandingPage(onStartCallback, player) {
   const container = document.createElement('div');
   container.id = 'landing-page';
   container.style.cssText = `
@@ -428,6 +429,15 @@ export function initLandingPage(onStartCallback) {
   enterButton.addEventListener('click', (e) => {
     e.stopPropagation();
     enableOrientationLock();
+    
+    // Reanudar contexto de audio de forma segura
+    soundManager.resumeContext();
+
+    // Activar PointerLock de inmediato si estamos en PC
+    if (player && player.controls && !isMobile()) {
+      player.controls.lock();
+    }
+
     container.style.opacity = '0';
     setTimeout(() => {
       if (container.parentNode) {

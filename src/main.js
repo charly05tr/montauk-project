@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { initLoadingScreen } from './ui/Loading/index.js'
-import { initOverlay } from './ui/Overlay/index.js'
+import { initOverlay, setExitCallback, setExitButtonVisible } from './ui/Overlay/index.js'
+import { soundManager } from './core/SoundManager.js'
 import { initRenderer } from './core/Renderer.js'
 import { initGlobalLights, updateGlobalLights } from './core/Lights.js'
 import { sceneManager } from './core/SceneManager.js'
@@ -17,103 +18,128 @@ import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
 import { initLandingPage } from './ui/Landing/index.js';
 import { initOrientationLock } from './utils/orientationLock.js';
 
-// Inicializar el bloqueo de orientación para dispositivos móviles
+// Activar el bloqueo de orientación para dispositivos móviles
 initOrientationLock();
 
-initLandingPage(() => {
-  const app = document.querySelector('#app')
+// Inicializar todos los sistemas core del juego inmediatamente para pre-cargar la escena
+const app = document.querySelector('#app')
 
-  // 1. Inicializar UI
-  initLoadingScreen()
-  initOverlay()
+// 1. Inicializar UI
+initLoadingScreen()
+initOverlay()
 
-  // 2. Físicas
-  const physicsWorld = new PhysicsWorld()
+// 2. Físicas
+const physicsWorld = new PhysicsWorld()
 
-  // 3. Crear escena y Jugador a través del SceneManager
-  // Usamos una escena dummy para el jugador primero para evitar errores en su constructor,
-  // pero luego la reemplazamos cuando obtenemos la escena real
-  const player = new Player(sceneManager.getScene(), physicsWorld)
-  const scene = sceneManager.initScene(physicsWorld, player)
+// 3. Crear escena y Jugador a través del SceneManager
+const player = new Player(sceneManager.getScene(), physicsWorld)
+const scene = sceneManager.initScene(physicsWorld, player)
 
-  // 3.5. Inicializar controles móviles si es un dispositivo táctil
-  initMobileControls(player)
+// 3.5. Inicializar controles móviles si es un dispositivo táctil
+initMobileControls(player)
 
-  // 4. Inicializar Core (Renderer)
-  const renderer = initRenderer(app)
+// 4. Inicializar Core (Renderer)
+const renderer = initRenderer(app)
 
-  // 5. Configurar Post-procesado (EffectComposer)
-  const composer = new EffectComposer(renderer);
+// 5. Configurar Post-procesado (EffectComposer)
+const composer = new EffectComposer(renderer);
 
-  // RenderPass: Dibuja la escena base
-  const renderPass = new RenderPass(scene, player.camera);
-  composer.addPass(renderPass);
+// RenderPass: Dibuja la escena base
+const renderPass = new RenderPass(scene, player.camera);
+composer.addPass(renderPass);
 
-  // FilmPass: Ruido estático y scanlines para look vintage/VHS
-  const filmPass = new FilmPass(0.35, 0.4, 648, false);
-  composer.addPass(filmPass);
+// FilmPass: Ruido estático y scanlines para look vintage/VHS
+const filmPass = new FilmPass(0.35, 0.4, 648, false);
+composer.addPass(filmPass);
 
-  // ShaderPass: Viñeteado agresivo (bordes muy oscuros) para claustrofobia
-  const vignettePass = new ShaderPass(VignetteShader);
-  vignettePass.uniforms["offset"].value = 1.0;
-  vignettePass.uniforms["darkness"].value = 1.1;
-  composer.addPass(vignettePass);
+// ShaderPass: Viñeteado agresivo (bordes muy oscuros) para claustrofobia
+const vignettePass = new ShaderPass(VignetteShader);
+vignettePass.uniforms["offset"].value = 1.0;
+vignettePass.uniforms["darkness"].value = 1.1;
+composer.addPass(vignettePass);
 
-  // Resize handler para composer
-  window.addEventListener('resize', () => {
-      composer.setSize(window.innerWidth, window.innerHeight);
-  });
+// Resize handler para composer
+window.addEventListener('resize', () => {
+    composer.setSize(window.innerWidth, window.innerHeight);
+});
 
-  // 6. Inicializar Luces Globales Prácticas
-  initGlobalLights(scene)
+// 6. Inicializar Luces Globales Prácticas
+initGlobalLights(scene)
 
-  // 7. Atajo de teclado especial para alternar escenas ("HELP")
-  // En Scene 1, el sistema del abecedario maneja "HELP" con luces interactivas.
-  // En otras escenas, se mantiene como atajo de desarrollador.
-  let typedBuffer = ''
-  const sceneOrder = ['scene1', 'scene2', 'scene3', 'scene4']
-  window.addEventListener('keydown', (e) => {
-    if (e.key.length !== 1) return // Ignorar teclas especiales (Shift, Ctrl, etc.)
-    
-    // No interceptar teclas cuando estamos en Scene 1 (el abecedario las maneja)
-    if (sceneManager.activeSceneId === 'scene1') return;
+// 7. Atajo de teclado especial para alternar escenas ("HELP")
+let typedBuffer = ''
+const sceneOrder = ['scene1', 'scene2', 'scene3', 'scene4']
+window.addEventListener('keydown', (e) => {
+  if (e.key.length !== 1) return // Ignorar teclas especiales (Shift, Ctrl, etc.)
+  
+  // No interceptar teclas cuando estamos en Scene 1 (el abecedario las maneja)
+  if (sceneManager.activeSceneId === 'scene1') return;
 
-    typedBuffer += e.key.toLowerCase()
-    if (typedBuffer.length > 4) {
-      typedBuffer = typedBuffer.substring(typedBuffer.length - 4)
+  typedBuffer += e.key.toLowerCase()
+  if (typedBuffer.length > 4) {
+    typedBuffer = typedBuffer.substring(typedBuffer.length - 4)
+  }
+  
+  if (typedBuffer === 'help') {
+    const currentIndex = sceneOrder.indexOf(sceneManager.activeSceneId)
+    const nextScene = sceneOrder[(currentIndex + 1) % sceneOrder.length]
+    console.log(`Codi/Atajo detectado. Cambiando de escena a: ${nextScene}`)
+    sceneManager.switchSceneWithTransition(nextScene, physicsWorld, player)
+    typedBuffer = '' // Limpiar buffer tras activar
+  }
+})
+
+// 8. Reloj y Loop de Animación
+const clock = new THREE.Clock()
+
+function animate() {
+  requestAnimationFrame(animate)
+  const dt = Math.min(clock.getDelta(), 0.05)
+
+  // Avanzar simulación física
+  physicsWorld.step(dt)
+
+  // Actualizar controles y cámara del jugador
+  player.update()
+
+  // Sincronizar luz de jugador (linterna) con la cámara
+  updateGlobalLights(player.camera)
+
+  // Actualizar lógica de la escena actual
+  sceneManager.updateCurrentScene(clock.elapsedTime, player, dt);
+
+  // Renderizar frame con Post-procesado
+  composer.render()
+}
+
+animate()
+
+// Cargar la Landing Page pasando el objeto jugador para el PointerLock instantáneo
+initLandingPage(null, player);
+
+setExitCallback(async () => {
+  // 1. Apagar linterna del jugador
+  player.flashlightEnabled = false;
+  player.flashlight.intensity = 0.0;
+  
+  // 2. Resetear teclas presionadas
+  if (player.keys) {
+    for (const k in player.keys) {
+      player.keys[k] = false;
     }
-    
-    if (typedBuffer === 'help') {
-      const currentIndex = sceneOrder.indexOf(sceneManager.activeSceneId)
-      const nextScene = sceneOrder[(currentIndex + 1) % sceneOrder.length]
-      console.log(`Codi/Atajo detectado. Cambiando de escena a: ${nextScene}`)
-      sceneManager.switchSceneWithTransition(nextScene, physicsWorld, player)
-      typedBuffer = '' // Limpiar buffer tras activar
-    }
-  })
-
-  // 8. Reloj y Loop de Animación
-  const clock = new THREE.Clock()
-
-  function animate() {
-    requestAnimationFrame(animate)
-    const dt = Math.min(clock.getDelta(), 0.05)
-
-    // Avanzar simulación física
-    physicsWorld.step(dt)
-
-    // Actualizar controles y cámara del jugador
-    player.update()
-
-    // Sincronizar luz de jugador (linterna) con la cámara
-    updateGlobalLights(player.camera)
-
-    // Actualizar lógica de la escena actual
-    sceneManager.updateCurrentScene(clock.elapsedTime, player, dt);
-
-    // Renderizar frame con Post-procesado
-    composer.render()
   }
 
-  animate()
+  // 3. Detener todos los sonidos de ambiente y espaciales
+  soundManager.stopAllAmbient();
+  soundManager.stopAllPositional();
+
+  // 4. Resetear la escena a escena 1
+  sceneManager.activeSceneId = null;
+  sceneManager.switchScene('scene1', physicsWorld, player);
+
+  // 5. Ocultar botón de salir
+  setExitButtonVisible(false);
+
+  // 6. Volver a inicializar la landing page
+  initLandingPage(null, player);
 });

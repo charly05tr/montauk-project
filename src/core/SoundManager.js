@@ -26,6 +26,23 @@ class SoundManager {
                 console.error('SoundManager: Error al reanudar AudioContext', err);
             }
         }
+        this._primeAudioContext(context);
+    }
+
+    _primeAudioContext(context) {
+        try {
+            const buffer = context.createBuffer(1, 1, context.sampleRate);
+            const source = context.createBufferSource();
+            source.buffer = buffer;
+            const gain = context.createGain();
+            gain.gain.value = 0;
+            source.connect(gain);
+            gain.connect(context.destination);
+            source.start(context.currentTime);
+            source.stop(context.currentTime + 0.001);
+        } catch (e) {
+            // Silently ignore priming errors
+        }
     }
 
     loadBuffer(path) {
@@ -480,7 +497,7 @@ class SoundManager {
         source.connect(gainNode);
         gainNode.connect(ctx.destination);
 
-        source.start(0, startOffset, duration);
+        source.start(ctx.currentTime, startOffset, duration);
     }
 
     /**
@@ -590,7 +607,7 @@ class SoundManager {
         source.connect(gainNode);
         gainNode.connect(ctx.destination);
 
-        source.start(0, startOffset, duration);
+        source.start(ctx.currentTime, startOffset, duration);
     }
 }
 

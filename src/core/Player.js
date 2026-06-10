@@ -67,7 +67,7 @@ export class Player {
             // En móvil, reanudar contexto de audio al tocar la pantalla por primera vez
             document.body.addEventListener('touchstart', () => {
                 soundManager.resumeContext();
-            }, { once: true });
+            }, { once: true, passive: false });
         }
 
         this.controls.addEventListener('lock', () => {

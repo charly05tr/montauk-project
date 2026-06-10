@@ -15,6 +15,11 @@ import { FilmPass } from 'three/examples/jsm/postprocessing/FilmPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
 import { initLandingPage } from './ui/Landing/index.js';
+import { initOrientationLock } from './utils/orientationLock.js';
+
+// Inicializar el bloqueo de orientación para dispositivos móviles
+initOrientationLock();
+
 initLandingPage(() => {
   const app = document.querySelector('#app')
 

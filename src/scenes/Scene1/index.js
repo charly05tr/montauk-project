@@ -318,7 +318,7 @@ function onAlphabetKeyDown(e) {
     });
     activeLights.length = 0;
     alphabetBulbs.forEach(b => { b.pointLight = null; });
-    setFloatingHelp('<b>Scene: The Anomaly (Joyce Byers`s House)</b><br><br><b>Controls:</b><br>- Click to enter<br>- WASD to move<br><br><b>Exit:</b><br>- Press ESC to unlock pointer<br>- Type "HELP" to teleport');
+    setFloatingHelp('<b>Scene: The Anomaly (Joyce Byers`s House)</b><br><br><b>Controls:</b><br>- Click to enter<br>- WASD to move<br><br><b>Hints:</b><br>- Press ESC to unlock pointer<br>- The alphabet wall is waiting. Spell the word that describes what you need to escape...?');
     setHelpText('');
   }
 }
@@ -535,7 +535,7 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
 
       setMainSceneReady();
       eventBus.emit('sceneReady', { sceneId: 'scene1' });
-      setFloatingHelp('<b>Scene 1: The Anomaly</b><br><br><b>Controls:</b><br>- Click to enter<br>- WASD to move<br><br><b>Exit:</b><br>- Press ESC to unlock pointer<br>- Type "HELP" to teleport');
+      setFloatingHelp('<b>Scene 1: The Anomaly</b><br><br><b>Controls:</b><br>- Click to enter<br>- WASD to move<br><br><b>Hints:</b><br>- Press ESC to unlock pointer<br>- The alphabet wall is waiting. Spell the word that describes what you need to escape...?');
       setHelpText('');
     }
   ).catch((error) => {

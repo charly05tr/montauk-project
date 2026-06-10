@@ -25,12 +25,10 @@ export function loadSchoolScene(scene, physicsWorld, player) {
       const model = gltf.scene;
 
       if (!model.userData.isConfigured) {
-        // --- 1. ESCALA DINÁMICA ---
-        // Calculamos el tamaño original "crudo" que trae el modelo ANTES de rotarlo
         const initialBox = new THREE.Box3().setFromObject(model);
         const rawHeight = initialBox.getSize(new THREE.Vector3()).y || 1;
 
-        // Forzamos que la altura de la escuela sea ~5.2 metros (en lugar de 3.5)
+        // Forzamos que la altura de la escuela sea ~5.2 metros
         const targetHeight = 5.2;
         const scaleFactor = targetHeight / rawHeight;
         model.scale.setScalar(scaleFactor);
@@ -137,6 +135,36 @@ export function loadSchoolScene(scene, physicsWorld, player) {
       // --- 4. RELOCALIZACIÓN DE LUCES (Relativas a la escuela) ---
       redLight.position.set(finalRoomBox.min.x + 1, finalRoomBox.max.y - 0.5, finalRoomCenter.z);
       orangeLight.position.set(finalRoomBox.max.x - 1, finalRoomBox.max.y - 0.5, finalRoomCenter.z);
+
+      // --- PATCH: TAPAR EL AGUJERO CON LA TEXTURA DEL USUARIO ---
+      const texLoader = new THREE.TextureLoader(loadingManager);
+      const wallTex = texLoader.load('/assets/schoolTexture.png');
+      wallTex.colorSpace = THREE.SRGBColorSpace;
+
+      let patchWallMat = new THREE.MeshLambertMaterial({ map: wallTex, side: THREE.DoubleSide });
+
+      // Aplicar el mismo filtro oscuro y tétrico que usa el resto de la escuela
+      patchWallMat = tuneSchoolMaterial(patchWallMat);
+
+      // Restauramos el tamaño exacto del plano para no recortar los bordes de la textura
+      const patchWallGeo = new THREE.PlaneGeometry(finalRoomSize.x, finalRoomSize.y);
+
+      // Pared en el extremo max.z (metida un poquito hacia adentro para que no haya gap)
+      const patchWall1 = new THREE.Mesh(patchWallGeo, patchWallMat);
+      patchWall1.rotation.y = Math.PI;
+      // Centramos la pared perfectamente; usaremos offsets de textura si hace falta alinear franjas
+      patchWall1.position.set(finalRoomCenter.x, finalRoomCenter.y, finalRoomBox.max.z - 0.05);
+      patchWall1.receiveShadow = ENABLE_SHADOWS;
+      scene.add(patchWall1);
+
+      // Piso extendido SOLO para tapar el vacío bajo las sillas flotantes (hacia afuera)
+      const patchFloorGeo = new THREE.PlaneGeometry(finalRoomSize.x, 5); // 5 metros extra
+      const patchFloor = new THREE.Mesh(patchFloorGeo, new THREE.MeshLambertMaterial({ color: 0x222222, side: THREE.DoubleSide }));
+      patchFloor.rotation.x = -Math.PI / 2; // Mirando arriba
+      // Lo colocamos justo afuera del pasillo, donde empieza el vacío, y 5 cm abajo del piso original
+      patchFloor.position.set(finalRoomCenter.x, finalRoomBox.min.y - 0.05, finalRoomBox.max.z + 2.5);
+      patchFloor.receiveShadow = ENABLE_SHADOWS;
+      scene.add(patchFloor);
 
       // --- 5. FÍSICAS PERIMETRALES ---
       const w = finalRoomSize.x;

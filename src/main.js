@@ -1,6 +1,6 @@
 import * as THREE from 'three'
-import { initLoadingScreen } from './ui/Loading/index.js'
-import { initOverlay, setExitCallback, setExitButtonVisible, setHelpTextVisible } from './ui/Overlay/index.js'
+import { initLoadingScreen, loadingManager } from './ui/Loading/index.js'
+import { initOverlay, setExitCallback, setExitButtonVisible } from './ui/Overlay/index.js'
 import { soundManager } from './core/SoundManager.js'
 import { initRenderer } from './core/Renderer.js'
 import { initGlobalLights, updateGlobalLights } from './core/Lights.js'
@@ -29,6 +29,9 @@ const app = document.querySelector('#app')
 // 1. Inicializar UI
 initLoadingScreen()
 initOverlay()
+
+// Empezar a precargar absolutamente todos los modelos al iniciar
+sceneManager.preloadAllAssets(loadingManager);
 
 // 2. Físicas
 const physicsWorld = new PhysicsWorld()
@@ -76,7 +79,7 @@ composer.addPass(vignettePass);
 
 // Resize handler para composer
 window.addEventListener('resize', () => {
-    composer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
 });
 
 // 6. Inicializar Luces Globales Prácticas
@@ -87,7 +90,7 @@ let typedBuffer = ''
 const sceneOrder = ['scene1', 'scene2', 'scene3', 'scene4']
 window.addEventListener('keydown', (e) => {
   if (e.key.length !== 1) return // Ignorar teclas especiales (Shift, Ctrl, etc.)
-  
+
   // No interceptar teclas cuando estamos en Scene 1 (el abecedario las maneja)
   if (sceneManager.activeSceneId === 'scene1') return;
 
@@ -95,7 +98,7 @@ window.addEventListener('keydown', (e) => {
   if (typedBuffer.length > 4) {
     typedBuffer = typedBuffer.substring(typedBuffer.length - 4)
   }
-  
+
   if (typedBuffer === 'help') {
     const currentIndex = sceneOrder.indexOf(sceneManager.activeSceneId)
     const nextScene = sceneOrder[(currentIndex + 1) % sceneOrder.length]

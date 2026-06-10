@@ -525,7 +525,7 @@ export function loadTunnelScene(scene, physicsWorld, player, sceneManager) {
       setHelpText('');
       
       // Reproducir sonido ambiente del túnel
-      soundManager.playAmbient('tunnel_ambient', '/sounds/scene3song.mp3', true, 0.45);
+      soundManager.playAmbient('tunnel_ambient', '/sounds/scene3song.mp3', true, 0.5);
     }
   ).catch((error) => {
     console.error(error);
@@ -565,7 +565,7 @@ export function updateScene3(time, player, dt) {
     if (isMoving) {
       footstepTimer += dt;
       if (footstepTimer >= 0.58) { // Intervalo de pasos (580ms)
-        soundManager.playFootstepSlice('/sounds/steps.mp3', 0.45);
+        soundManager.playFootstepSlice('/sounds/steps.mp3', 0.6);
         footstepTimer = 0;
       }
     } else {

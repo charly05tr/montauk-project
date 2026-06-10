@@ -1,4 +1,4 @@
-# Proyecto Montauk
+# Montauk Project
 
 A Stranger Things interactive 3D web experience built with Three.js and Cannon-es. Explore four interconnected scenes — from Joyce Byers' living room to the Upside Down — with physics-based movement, dynamic lighting, spatial audio, and post-processing VFX.
 

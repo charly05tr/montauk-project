@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { initLoadingScreen } from './ui/Loading/index.js'
-import { initOverlay, setExitCallback, setExitButtonVisible } from './ui/Overlay/index.js'
+import { initOverlay, setExitCallback, setExitButtonVisible, setHelpTextVisible } from './ui/Overlay/index.js'
 import { soundManager } from './core/SoundManager.js'
 import { initRenderer } from './core/Renderer.js'
 import { initGlobalLights, updateGlobalLights } from './core/Lights.js'
@@ -8,6 +8,8 @@ import { sceneManager } from './core/SceneManager.js'
 import { PhysicsWorld } from './physics/PhysicsWorld.js'
 import { Player } from './core/Player.js'
 import { initMobileControls } from './ui/MobileControls/index.js'
+import { initPauseMenu } from './ui/PauseMenu/index.js'
+import { isMobile } from './utils/deviceDetection.js'
 
 // --- POST-PROCESSING IMPORTS ---
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -37,6 +39,20 @@ const scene = sceneManager.initScene(physicsWorld, player)
 
 // 3.5. Inicializar controles móviles si es un dispositivo táctil
 initMobileControls(player)
+
+// 3.6. Inicializar menú de pausa
+initPauseMenu(player, physicsWorld, exitToLanding);
+
+// 3.7. Configurar PointerLock handlers para PC
+if (!isMobile()) {
+  player.controls.addEventListener('lock', () => {
+    setExitButtonVisible(false);
+  });
+  player.controls.addEventListener('unlock', () => {
+    setHelpTextVisible(true);
+    setExitButtonVisible(true);
+  });
+}
 
 // 4. Inicializar Core (Renderer)
 const renderer = initRenderer(app)
@@ -117,29 +133,25 @@ animate()
 // Cargar la Landing Page pasando el objeto jugador para el PointerLock instantáneo
 initLandingPage(null, player);
 
-setExitCallback(async () => {
-  // 1. Apagar linterna del jugador
+async function exitToLanding() {
   player.flashlightEnabled = false;
   player.flashlight.intensity = 0.0;
-  
-  // 2. Resetear teclas presionadas
+
   if (player.keys) {
     for (const k in player.keys) {
       player.keys[k] = false;
     }
   }
 
-  // 3. Detener todos los sonidos de ambiente y espaciales
   soundManager.stopAllAmbient();
   soundManager.stopAllPositional();
 
-  // 4. Resetear la escena a escena 1
   sceneManager.activeSceneId = null;
   sceneManager.switchScene('scene1', physicsWorld, player);
 
-  // 5. Ocultar botón de salir
   setExitButtonVisible(false);
 
-  // 6. Volver a inicializar la landing page
   initLandingPage(null, player);
-});
+}
+
+setExitCallback(exitToLanding);

@@ -3,6 +3,7 @@ import { isMobile } from '../../utils/deviceDetection.js';
 import { sceneManager } from '../../core/SceneManager.js';
 import { eventBus } from '../../utils/eventBus.js';
 import { toggleDemogorgon } from '../../scenes/Scene2/index.js';
+import { showPauseMenu } from '../PauseMenu/index.js';
 
 let joystickContainer = null;
 let joystickKnob = null;
@@ -41,13 +42,11 @@ export function initMobileControls(player) {
   `;
 
   // 2. Prevenir gestos del navegador en mobile (pull-to-refresh, swipe-nav, overscroll)
+  // Se aplican dinámicamente al entrar al juego para no bloquear scroll en landing page
   const preventBrowserGestures = document.createElement('style');
   preventBrowserGestures.textContent = `
     html, body {
-      touch-action: none;
       -webkit-touch-callout: none;
-      overscroll-behavior: none;
-      overflow: hidden;
     }
   `;
   document.head.appendChild(preventBrowserGestures);
@@ -125,7 +124,54 @@ export function initMobileControls(player) {
   joystickContainer.appendChild(joystickKnob);
   root.appendChild(joystickContainer);
 
-  // 4. Crear Contenedor de Botones (Derecha)
+  // 4. Botón Pausa (esquina superior izquierda en mobile)
+  const pauseContainer = document.createElement('div');
+  pauseContainer.style.cssText = `
+    position: absolute;
+    top: 24px;
+    left: 24px;
+    z-index: 100001;
+    pointer-events: auto;
+  `;
+
+  const pauseBtn = document.createElement('div');
+  pauseBtn.style.cssText = `
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: rgba(20, 20, 20, 0.45);
+    border: 1.5px solid rgba(255, 122, 43, 0.35);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    pointer-events: auto;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6), inset 0 0 10px rgba(255, 122, 43, 0.1);
+    transition: transform 0.1s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    color: #ff7a2b;
+    cursor: pointer;
+  `;
+  pauseBtn.innerHTML = `
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="6" y="4" width="4" height="16" rx="1"/>
+      <rect x="14" y="4" width="4" height="16" rx="1"/>
+    </svg>
+  `;
+  pauseBtn.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    showPauseMenu();
+  }, { passive: false });
+  pauseBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    showPauseMenu();
+  });
+
+  pauseContainer.appendChild(pauseBtn);
+  root.appendChild(pauseContainer);
+
+  // 5. Crear Contenedor de Botones (Derecha)
   const btnContainer = document.createElement('div');
   btnContainer.style.cssText = `
     position: absolute;
@@ -213,8 +259,8 @@ export function initMobileControls(player) {
   }, { passive: false });
 
   window.addEventListener('touchmove', (e) => {
-    e.preventDefault();
     if (!joystickActive) return;
+    e.preventDefault();
 
     let touch = null;
     for (let i = 0; i < e.touches.length; i++) {
@@ -290,8 +336,8 @@ export function initMobileControls(player) {
   }, { passive: false });
 
   window.addEventListener('touchmove', (e) => {
-    e.preventDefault();
     if (!lookActive) return;
+    e.preventDefault();
 
     let touch = null;
     for (let i = 0; i < e.touches.length; i++) {

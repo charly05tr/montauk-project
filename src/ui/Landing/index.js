@@ -345,6 +345,8 @@ export function initLandingPage(onStartCallback, player) {
     inset: 0;
     overflow-y: auto;
     overflow-x: hidden;
+    touch-action: auto;
+    -webkit-overflow-scrolling: touch;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -430,6 +432,18 @@ export function initLandingPage(onStartCallback, player) {
     e.stopPropagation();
     enableOrientationLock();
     soundManager.resumeContext();
+
+    // Aplicar restricciones táctiles para el juego (bloquear scroll, pull-to-refresh, etc.)
+    const gameRestrictions = document.createElement('style');
+    gameRestrictions.id = 'game-touch-restrictions';
+    gameRestrictions.textContent = `
+      html, body {
+        touch-action: none;
+        overscroll-behavior: none;
+        overflow: hidden;
+      }
+    `;
+    document.head.appendChild(gameRestrictions);
 
     if (player && player.controls && !isMobile()) {
       player.controls.lock();

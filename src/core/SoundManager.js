@@ -6,9 +6,41 @@ class SoundManager {
         this.audioLoader = new THREE.AudioLoader();
         this.audioBuffers = new Map(); // Cache de buffers (URL -> AudioBuffer)
         this.ambientSounds = new Map(); // Sonidos de ambiente activos (key -> THREE.Audio)
-        this.positionalSounds = new Map(); // Sonidos posicionales activos (key -> { sound: THREE.PositionalAudio, mesh: THREE.Object3D })
+        this.ambientVolumes = new Map(); // Volumen original por key
+        this.ambientTypes = new Map(); // 'music' o 'sfx' por key
+        this.positionalSounds = new Map(); // Sonidos posicionales activos (key -> { sound: THREE.PositionalAudio, mesh: THREE.Object3D, volume: number })
         this.footstepCache = null; // Cache para los tiempos de pasos recortados
         this.keyboardCache = null; // Cache para los tiempos de teclado recortados
+        this.sfxMuted = false;
+        this.musicMuted = false;
+    }
+
+    isSfxMuted() { return this.sfxMuted; }
+    isMusicMuted() { return this.musicMuted; }
+
+    toggleSfxMute() {
+        this.sfxMuted = !this.sfxMuted;
+        // Ambient sounds de tipo 'sfx'
+        for (const [key, sound] of this.ambientSounds) {
+            if (this.ambientTypes.get(key) === 'sfx') {
+                const vol = this.ambientVolumes.get(key) ?? 0.5;
+                sound.setVolume(this.sfxMuted ? 0 : vol);
+            }
+        }
+        // Positional sounds (SFX)
+        for (const [, { sound, volume }] of this.positionalSounds) {
+            sound.setVolume(this.sfxMuted ? 0 : volume);
+        }
+    }
+
+    toggleMusicMute() {
+        this.musicMuted = !this.musicMuted;
+        for (const [key, sound] of this.ambientSounds) {
+            if (this.ambientTypes.get(key) === 'music') {
+                const vol = this.ambientVolumes.get(key) ?? 0.5;
+                sound.setVolume(this.musicMuted ? 0 : vol);
+            }
+        }
     }
 
     setListener(listener) {
@@ -21,7 +53,6 @@ class SoundManager {
         if (context.state === 'suspended') {
             try {
                 await context.resume();
-                console.log('SoundManager: AudioContext reanudado.');
             } catch (err) {
                 console.error('SoundManager: Error al reanudar AudioContext', err);
             }
@@ -67,13 +98,12 @@ class SoundManager {
         });
     }
 
-    async playAmbient(key, path, loop = true, volume = 0.5) {
+    async playAmbient(key, path, loop = true, volume = 0.5, type = 'music') {
         if (!this.listener) {
             console.warn('SoundManager: No se puede reproducir audio sin un AudioListener registrado.');
             return;
         }
 
-        // Si ya está reproduciéndose bajo esta clave, no hacemos nada
         if (this.ambientSounds.has(key)) {
             const existingSound = this.ambientSounds.get(key);
             if (!existingSound.isPlaying) {
@@ -85,19 +115,20 @@ class SoundManager {
         try {
             const sound = new THREE.Audio(this.listener);
             this.ambientSounds.set(key, sound);
+            this.ambientVolumes.set(key, volume);
+            this.ambientTypes.set(key, type);
 
             const buffer = await this.loadBuffer(path);
 
-            // Evitar condición de carrera si el sonido fue detenido o reemplazado durante la carga
             if (this.ambientSounds.get(key) !== sound) {
                 return;
             }
 
             sound.setBuffer(buffer);
             sound.setLoop(loop);
-            sound.setVolume(volume);
+            const muted = (type === 'music' && this.musicMuted) || (type === 'sfx' && this.sfxMuted);
+            sound.setVolume(muted ? 0 : volume);
             sound.play();
-            console.log(`SoundManager: Reproduciendo ambiente "${key}"`);
         } catch (err) {
             if (this.ambientSounds.get(key) === sound) {
                 this.ambientSounds.delete(key);
@@ -112,7 +143,6 @@ class SoundManager {
                 sound.stop();
             }
             this.ambientSounds.delete(key);
-            console.log(`SoundManager: Ambiente "${key}" detenido.`);
         }
     }
 
@@ -123,17 +153,14 @@ class SoundManager {
             }
         }
         this.ambientSounds.clear();
-        console.log('SoundManager: Todos los ambientes detenidos.');
     }
 
     async playPositional(key, path, mesh, options = {}) {
         if (!this.listener) {
-            console.warn('SoundManager: No se puede reproducir audio posicional sin un AudioListener.');
             return;
         }
 
         if (!mesh) {
-            console.warn(`SoundManager: No se proporcionó una malla para vincular el sonido espacial "${key}".`);
             return;
         }
 
@@ -142,7 +169,7 @@ class SoundManager {
 
         try {
             const sound = new THREE.PositionalAudio(this.listener);
-            
+
             // Configurar parámetros espaciales
             const refDistance = options.refDistance ?? 1;
             const maxDistance = options.maxDistance ?? 100;
@@ -154,13 +181,12 @@ class SoundManager {
             sound.setMaxDistance(maxDistance);
             sound.setRolloffFactor(rolloffFactor);
             sound.setLoop(loop);
-            sound.setVolume(volume);
+            sound.setVolume(this.sfxMuted ? 0 : volume);
 
-            this.positionalSounds.set(key, { sound, mesh });
+            this.positionalSounds.set(key, { sound, mesh, volume });
 
             const buffer = await this.loadBuffer(path);
 
-            // Evitar condición de carrera si el sonido fue detenido o reemplazado durante la carga
             if (this.positionalSounds.get(key)?.sound !== sound) {
                 return;
             }
@@ -169,7 +195,6 @@ class SoundManager {
             mesh.add(sound);
             sound.play();
 
-            console.log(`SoundManager: Reproduciendo sonido posicional "${key}" atado a ${mesh.name || 'objeto 3D'}`);
         } catch (err) {
             if (this.positionalSounds.get(key)?.sound === sound) {
                 this.positionalSounds.delete(key);
@@ -187,7 +212,6 @@ class SoundManager {
                 mesh.remove(sound);
             }
             this.positionalSounds.delete(key);
-            console.log(`SoundManager: Sonido posicional "${key}" detenido.`);
         }
     }
 
@@ -201,7 +225,6 @@ class SoundManager {
             }
         }
         this.positionalSounds.clear();
-        console.log('SoundManager: Todos los sonidos posicionales detenidos.');
     }
 
     /**
@@ -213,10 +236,10 @@ class SoundManager {
         const path = '/sounds/door_open.mp3';
         this.loadBuffer(path)
             .then(() => {
-                this.playAmbient('door_open', path, false, 0.8);
+                this.playAmbient('door_open', path, false, 0.8, 'sfx');
             })
             .catch(() => {
-                console.log('SoundManager: Archivo /sounds/door_open.mp3 no encontrado. Generando sonido sintetizado...');
+                if (this.sfxMuted) return;
                 this.playSynthesizedDoorOpen();
             });
     }
@@ -226,6 +249,7 @@ class SoundManager {
      * usando la Web Audio API directamente.
      */
     playSynthesizedDoorOpen() {
+        if (this.sfxMuted) return;
         const ctx = THREE.AudioContext.getContext();
         if (ctx.state === 'suspended') ctx.resume();
 
@@ -238,7 +262,7 @@ class SoundManager {
 
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(70, now);
-        
+
         // Simular rugosidad de la madera variando aleatoriamente la frecuencia
         for (let i = 0; i < 25; i++) {
             const t = now + i * 0.04;
@@ -294,10 +318,10 @@ class SoundManager {
         const path = '/sounds/portal_opening.mp3';
         this.loadBuffer(path)
             .then(() => {
-                this.playAmbient('portal_open', path, false, 0.7);
+                this.playAmbient('portal_open', path, false, 0.7, 'sfx');
             })
             .catch(() => {
-                console.log('SoundManager: Archivo portal_opening.mp3 no encontrado. Generando sonido sintetizado...');
+                if (this.sfxMuted) return;
                 this.playSynthesizedPortalOpen();
             });
     }
@@ -310,6 +334,7 @@ class SoundManager {
      * Duración total: ~4 segundos (cubre toda la secuencia del portal).
      */
     playSynthesizedPortalOpen() {
+        if (this.sfxMuted) return;
         const ctx = THREE.AudioContext.getContext();
         if (ctx.state === 'suspended') ctx.resume();
 
@@ -432,8 +457,6 @@ class SoundManager {
 
         // Convertir muestras a segundos
         let times = peakIndices.map(idx => idx / sampleRate);
-        
-        console.log(`[SoundManager] Análisis de pasos completado. Se detectaron ${times.length} pasos en:`, times);
 
         // Fallback en caso de que la detección falle o el audio sea plano
         if (times.length === 0) {
@@ -441,7 +464,6 @@ class SoundManager {
             for (let t = 0.2; t < duration - 0.5; t += 0.7) {
                 times.push(t);
             }
-            console.log('[SoundManager] Fallback: Usando intervalos regulares de pasos:', times);
         }
 
         return times;
@@ -451,6 +473,7 @@ class SoundManager {
      * Reproduce una rodaja (slice) recortada de steps.mp3 correspondiente al siguiente paso en el ciclo.
      */
     async playFootstepSlice(path, volume = 0.5) {
+        if (this.sfxMuted) return;
         await this.resumeContext();
 
         let buffer;
@@ -545,7 +568,6 @@ class SoundManager {
 
         // Convertir muestras a segundos
         let times = peakIndices.map(idx => idx / sampleRate);
-        console.log(`[SoundManager] Análisis de teclado completado. Se detectaron ${times.length} clics en:`, times);
 
         // Fallback si no se detectan picos
         if (times.length === 0) {
@@ -553,7 +575,6 @@ class SoundManager {
             for (let t = 0.05; t < duration; t += 0.15) {
                 times.push(t);
             }
-            console.log('[SoundManager] Fallback: Usando intervalos regulares para clics de teclado:', times);
         }
 
         return times;
@@ -563,6 +584,7 @@ class SoundManager {
      * Reproduce una rodaja (slice) recortada de keyboard.mp3 correspondiente al siguiente clic en el ciclo.
      */
     async playKeyboardSlice(path, volume = 0.5) {
+        if (this.sfxMuted) return;
         await this.resumeContext();
 
         let buffer;

@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
-import { setHelpTextVisible, setExitButtonVisible } from '../ui/Overlay/index.js';
 import { soundManager } from './SoundManager.js';
 import { isMobile } from '../utils/deviceDetection.js';
 
@@ -69,15 +68,6 @@ export class Player {
                 soundManager.resumeContext();
             }, { once: true, passive: false });
         }
-
-        this.controls.addEventListener('lock', () => {
-            setHelpTextVisible(false);
-            setExitButtonVisible(false);
-        });
-        this.controls.addEventListener('unlock', () => {
-            setHelpTextVisible(true);
-            setExitButtonVisible(true);
-        });
 
         this.keys = { w: false, a: false, s: false, d: false, e: false };
         this.movementBounds = null;

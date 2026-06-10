@@ -19,6 +19,9 @@ let activePlayer = null;
 let activePhysicsWorld = null;
 let finalRoomBox = null;
 
+// Objetos auxiliares creados por loadRoom() que deben limpiarse al re-entrar
+const sceneAuxObjects = [];
+
 // --- SISTEMA DE ABECEDARIO INTERACTIVO ---
 // Mapeo de foquitos ordenados espacialmente a letras A-Z
 const alphabetBulbs = [];      // Array de { mesh, worldPos, letter, pointLight }
@@ -48,6 +51,12 @@ function cleanupAlphabetState() {
   alphabetBulbs.length = 0;
   // Limpiar objetos del portal si existían
   cleanupPortalSequence();
+
+  // Limpiar objetos auxiliares de la carga anterior (luces, parches de pared, etc.)
+  sceneAuxObjects.forEach(obj => {
+    if (obj.parent) obj.parent.remove(obj);
+  });
+  sceneAuxObjects.length = 0;
 
   // Desregistrar listeners de interacción con bombillas
   window.removeEventListener('pointerdown', onBulbPointerDown);
@@ -107,7 +116,10 @@ function collectAndMapBulbs(model) {
     const letterEntry = Object.entries(STRANGER_MAP).find(([key, val]) => val === i);
     const letter = letterEntry ? letterEntry[0] : null;
 
-    if (i === 17) {
+    // Solo aplicar el offset en la PRIMERA carga del modelo.
+    // En recargas, el sort por Z cambia de orden (el bulb movido sube de índice),
+    // así que i===17 apuntaría a un bulb diferente y lo movería también.
+    if (i === 17 && !model.userData.bulbOffsetDone) {
       const offsetVisualDerecha = 0.15; // 15cm
       const offsetHaciaAbajo = 0.04;   // -1cm
 
@@ -115,6 +127,7 @@ function collectAndMapBulbs(model) {
       bulb.node.position.y += offsetHaciaAbajo;
 
       bulb.node.updateMatrixWorld(true);
+      model.userData.bulbOffsetDone = true;
     }
 
     const finalWorldPos = new THREE.Vector3();
@@ -267,7 +280,7 @@ function onAlphabetKeyDown(e) {
     // Reproducir timbrado del teléfono que incrementa en volumen
     soundManager.stopAmbient('phone');
     const ringVol = 0.35 + (helpBuffer.length * 0.15); // H (0.50), E (0.65), L (0.80), P (0.95)
-    soundManager.playAmbient('phone', '/sounds/phone_ringing.mp3', false, ringVol);
+    soundManager.playAmbient('phone', '/sounds/phone_ringing.mp3', false, ringVol, 'sfx');
 
     // Iluminar la letra en el abecedario de la pared
     if (activeScene) {
@@ -308,7 +321,7 @@ function onAlphabetKeyDown(e) {
     // Si tenía letras correctas y se equivocó, reproducir un timbrado fuerte como jump scare
     if (helpBuffer.length > 0) {
       soundManager.stopAmbient('phone');
-      soundManager.playAmbient('phone', '/sounds/phone_ringing.mp3', false, 1.2);
+      soundManager.playAmbient('phone', '/sounds/phone_ringing.mp3', false, 1.2, 'sfx');
     }
 
     // Letra incorrecta: reiniciar el progreso y apagar las luces
@@ -341,10 +354,12 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
   redLight = new THREE.PointLight(0xff2a12, 0.05, 20, 2)
   redLight.position.set(-3, 5, 1)
   scene.add(redLight)
+  sceneAuxObjects.push(redLight)
 
   orangeLight = new THREE.PointLight(0xff6a18, 0.05, 20, 2)
   orangeLight.position.set(2.5, 3.75, -2.5)
   scene.add(orangeLight)
+  sceneAuxObjects.push(orangeLight)
 
   assetCache.loadGLTF('/models/stranger_things_room/scene.gltf', loadingManager).then(
     (gltf) => {
@@ -386,19 +401,24 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
       const finalRoomCenter = finalRoomBox.getCenter(new THREE.Vector3());
 
       // --- 3. EXTRACCIÓN DE MATERIALES Y COLISIONES ---
+      // Solo procesar materiales la primera vez (el modelo cacheado ya tiene los materiales ajustados)
+      const needsMaterialSetup = !model.userData.materialsProcessed;
+
       model.traverse((child) => {
         if (!child.isMesh) return;
 
         const materialName = getMaterialName(child.material);
 
-        // Aplicar el material refactorizado (que usa el caché para no matar la GPU)
-        child.material = Array.isArray(child.material)
-          ? child.material.map(tuneRoomMaterial)
-          : tuneRoomMaterial(child.material);
+        if (needsMaterialSetup) {
+          // Aplicar el material refactorizado (que usa el caché para no matar la GPU)
+          child.material = Array.isArray(child.material)
+            ? child.material.map(tuneRoomMaterial)
+            : tuneRoomMaterial(child.material);
 
-        child.frustumCulled = !isRoomSurfaceMaterial(materialName);
-        child.castShadow = ENABLE_SHADOWS;
-        child.receiveShadow = ENABLE_SHADOWS;
+          child.frustumCulled = !isRoomSurfaceMaterial(materialName);
+          child.castShadow = ENABLE_SHADOWS;
+          child.receiveShadow = ENABLE_SHADOWS;
+        }
 
         if (isRoomSurfaceMaterial(materialName)) {
           // EXCEPCIÓN: Queremos colisionadores reales para las paredes (wall_texture, wood-planks, etc).
@@ -433,6 +453,10 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
 
         createBoxFromMesh(physicsWorld, child);
       });
+
+      if (needsMaterialSetup) {
+        model.userData.materialsProcessed = true;
+      }
 
       // --- 3.5. RECOLECTAR Y MAPEAR FOQUITOS DEL ABECEDARIO ---
       collectAndMapBulbs(model);
@@ -475,6 +499,7 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
       woodPlane.position.set(finalRoomCenter.x, woodY, finalRoomBox.max.z - 0.05 - (woodThickness / 2));
       woodPlane.rotation.y = Math.PI;
       scene.add(woodPlane);
+      sceneAuxObjects.push(woodPlane);
 
       // Separador negro (Moldura) para que empate perfectamente con el bisel de las otras paredes
       const separatorHeight = 0.02;
@@ -482,6 +507,7 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
       const separatorPlane = new THREE.Mesh(new THREE.BoxGeometry(finalRoomSize.x, separatorHeight, woodThickness + 0.01), separatorMat);
       separatorPlane.position.set(finalRoomCenter.x, finalRoomBox.min.y + woodHeight + (separatorHeight / 2), finalRoomBox.max.z - 0.05 - (woodThickness / 2));
       scene.add(separatorPlane);
+      sceneAuxObjects.push(separatorPlane);
 
       const wallpaperHeight = finalRoomSize.y - woodHeight;
       const wallpaperY = finalRoomBox.min.y + woodHeight + (wallpaperHeight / 2);
@@ -503,6 +529,7 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
       backWallPlane.position.set(finalRoomCenter.x, wallpaperY, finalRoomBox.max.z - 0.05);
       backWallPlane.rotation.y = Math.PI;
       scene.add(backWallPlane);
+      sceneAuxObjects.push(backWallPlane);
 
       // --- 5. FÍSICAS PERIMETRALES (La Prisión) ---
       const w = finalRoomSize.x;

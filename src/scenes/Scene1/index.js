@@ -337,6 +337,9 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
   window.addEventListener('pointerdown', onBulbPointerDown);
   window.addEventListener('pointerup', onBulbPointerUp);
 
+  // Reproducir el sonido ambiente de la escena de inmediato para que suene durante la carga
+  soundManager.playAmbient('room_ambient', '/sounds/scene2.mp3', true, 0.4);
+
   // Luces Base (La posición se ajustará matemáticamente después de cargar la sala)
   redLight = new THREE.PointLight(0xff2a12, 0.05, 20, 2)
   redLight.position.set(-3, 5, 1)
@@ -376,9 +379,6 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
       }
 
       scene.add(model);
-
-      // Play audio
-      soundManager.playAmbient('room_ambient', '/sounds/scene2.mp3', true, 0.4);
 
       // Caja definitiva para armar las paredes y físicas perimetrales
       finalRoomBox = new THREE.Box3().setFromObject(model);

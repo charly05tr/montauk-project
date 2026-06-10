@@ -59,6 +59,7 @@ export class Player {
             document.body.addEventListener('click', () => {
                 soundManager.resumeContext();
                 if (!this.controls.isLocked) {
+                    console.log('LOCKED');
                     this.controls.lock();
                 }
             });

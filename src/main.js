@@ -53,7 +53,6 @@ if (!isMobile()) {
   });
   player.controls.addEventListener('unlock', () => {
     setExitButtonVisible(true);
-    setHelpTextVisible(true);
   });
 }
 

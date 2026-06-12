@@ -454,6 +454,52 @@ export function loadTunnelScene(scene, physicsWorld, player, sceneManager) {
       });
 
       // =====================================================
+      // TAPAS VISUALES (caps) en los extremos del túnel
+      // =====================================================
+      // Planos con la misma textura del túnel para que no se
+      // vea el vacío al mirar hacia los extremos.
+      const capHeight = (ceilingY - avgFloorY) * 3.0;
+      const capWidth = (corridorHalfWidth * 2 + 2.0) * 3.0;
+
+      const capTexture = scrollTexture.clone();
+      capTexture.needsUpdate = true;
+      capTexture.repeat.set(3, 3);
+
+      const capMaterial = new THREE.MeshStandardMaterial({
+        map: capTexture,
+        emissive: new THREE.Color(0x163a72),
+        emissiveIntensity: 0.45,
+        side: THREE.DoubleSide,
+        roughness: 0.92,
+        metalness: 0.0,
+      });
+
+      // Tapa en el extremo de entrada (donde aparece el jugador)
+      if (primaryAxis === 'z') {
+        const capGeoStart = new THREE.PlaneGeometry(capWidth, capHeight);
+        const capMeshStart = new THREE.Mesh(capGeoStart, capMaterial);
+        capMeshStart.position.set(finalCenter.x, avgFloorY + capHeight * 0.15, primaryMin);
+        scene.add(capMeshStart);
+
+        const capGeoEnd = new THREE.PlaneGeometry(capWidth, capHeight);
+        const capMeshEnd = new THREE.Mesh(capGeoEnd, capMaterial.clone());
+        capMeshEnd.position.set(finalCenter.x, avgFloorY + capHeight * 0.15, primaryMax);
+        scene.add(capMeshEnd);
+      } else {
+        const capGeoStart = new THREE.PlaneGeometry(capWidth, capHeight);
+        const capMeshStart = new THREE.Mesh(capGeoStart, capMaterial);
+        capMeshStart.rotation.y = Math.PI / 2;
+        capMeshStart.position.set(primaryMin, avgFloorY + capHeight * 0.15, finalCenter.z);
+        scene.add(capMeshStart);
+
+        const capGeoEnd = new THREE.PlaneGeometry(capWidth, capHeight);
+        const capMeshEnd = new THREE.Mesh(capGeoEnd, capMaterial.clone());
+        capMeshEnd.rotation.y = Math.PI / 2;
+        capMeshEnd.position.set(primaryMax, avgFloorY + capHeight * 0.15, finalCenter.z);
+        scene.add(capMeshEnd);
+      }
+
+      // =====================================================
       // SPAWN Y MOVIMIENTO
       // =====================================================
 

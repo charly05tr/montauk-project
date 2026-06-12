@@ -468,7 +468,7 @@ export function loadTunnelScene(scene, physicsWorld, player, sceneManager) {
       };
 
       // 2. Spawn en el extremo más bajo
-      const spawnOffset = Math.max(5.5, primarySize * 0.12);
+      const spawnOffset = Math.max(5.5, primarySize * 0.20);
       let spawnPrimary, lookAtPrimary, spawnFloorY;
 
       if (startsLow) {
@@ -541,21 +541,29 @@ export function updateScene3(time, player, dt) {
     const currentPos = playerPos[primaryAxis];
 
     let reachedEnd = false;
+    let reachedStart = false;
     if (startsLow) {
       // Spawn en primaryMin, camina hacia primaryMax
       if (currentPos > primaryMax - 6.0) {
         reachedEnd = true;
+      } else if (currentPos < primaryMin + 4.0) {
+        reachedStart = true;
       }
     } else {
       // Spawn en primaryMax, camina hacia primaryMin
       if (currentPos < primaryMin + 6.0) {
         reachedEnd = true;
+      } else if (currentPos > primaryMax - 4.0) {
+        reachedStart = true;
       }
     }
 
     if (reachedEnd && !sceneManagerInstance.isTransitioning) {
       const nextScene = sceneManagerInstance.previousSceneId === 'scene2' ? 'scene4' : 'scene2';
       sceneManagerInstance.switchSceneWithTransition(nextScene, activePhysicsWorld, activePlayer);
+    } else if (reachedStart && !sceneManagerInstance.isTransitioning) {
+      const prevScene = sceneManagerInstance.previousSceneId || 'scene2';
+      sceneManagerInstance.switchSceneWithTransition(prevScene, activePhysicsWorld, activePlayer);
     }
   }
 

@@ -169,6 +169,31 @@ function prepareTunnelMaterial(material) {
   return cloned;
 }
 
+function createTunnelExitGlow(scene, {
+  primaryAxis,
+  finalCenter,
+  avgFloorY,
+  corridorHalfWidth,
+  corridorHeight,
+  exitPrimary,
+  startsLow,
+}) {
+  const inwardOffset = Math.max(1.8, corridorHalfWidth * 0.85);
+  const glowPrimary = startsLow ? exitPrimary - inwardOffset : exitPrimary + inwardOffset;
+  const glowY = avgFloorY + corridorHeight * 0.62;
+
+  const glowLight = new THREE.PointLight(0x68d7ff, 22, 24, 1.7);
+  glowLight.position.set(
+    primaryAxis === 'x' ? glowPrimary : finalCenter.x,
+    glowY,
+    primaryAxis === 'z' ? glowPrimary : finalCenter.z
+  );
+  glowLight.userData.animation = 'exitGlow';
+  glowLight.userData.baseIntensity = 22;
+  scene.add(glowLight);
+  tunnelLights.push(glowLight);
+}
+
 export function loadTunnelScene(scene, physicsWorld, player, sceneManager) {
   sceneManagerInstance = sceneManager;
   activePlayer = player;
@@ -188,11 +213,13 @@ export function loadTunnelScene(scene, physicsWorld, player, sceneManager) {
 
   const redPulse = new THREE.PointLight(0xff1848, 14, 25, 2);
   redPulse.position.set(0, 1.5, -10);
+  redPulse.userData.animation = 'redPulse';
   scene.add(redPulse);
   tunnelLights.push(redPulse);
 
   const bluePulse = new THREE.PointLight(0x58d8ff, 8.5, 28, 2);
   bluePulse.position.set(0, 2.4, 5);
+  bluePulse.userData.animation = 'bluePulse';
   scene.add(bluePulse);
   tunnelLights.push(bluePulse);
 
@@ -454,21 +481,79 @@ export function loadTunnelScene(scene, physicsWorld, player, sceneManager) {
       });
 
       // =====================================================
+      // TAPAS VISUALES (caps) en los extremos del túnel
+      // =====================================================
+      // Planos con la misma textura del túnel para que no se
+      // vea el vacío al mirar hacia los extremos.
+      const capHeight = (ceilingY - avgFloorY) * 3.0;
+      const capWidth = (corridorHalfWidth * 2 + 2.0) * 3.0;
+
+      const capTexture = scrollTexture.clone();
+      capTexture.needsUpdate = true;
+      capTexture.repeat.set(3, 3);
+
+      const capMaterial = new THREE.MeshStandardMaterial({
+        map: capTexture,
+        emissive: new THREE.Color(0x163a72),
+        emissiveIntensity: 0.45,
+        side: THREE.DoubleSide,
+        roughness: 0.92,
+        metalness: 0.0,
+      });
+
+      // Tapa en el extremo de entrada (donde aparece el jugador)
+      if (primaryAxis === 'z') {
+        const capGeoStart = new THREE.PlaneGeometry(capWidth, capHeight);
+        const capMeshStart = new THREE.Mesh(capGeoStart, capMaterial);
+        capMeshStart.position.set(finalCenter.x, avgFloorY + capHeight * 0.15, primaryMin);
+        scene.add(capMeshStart);
+
+        const capGeoEnd = new THREE.PlaneGeometry(capWidth, capHeight);
+        const capMeshEnd = new THREE.Mesh(capGeoEnd, capMaterial.clone());
+        capMeshEnd.position.set(finalCenter.x, avgFloorY + capHeight * 0.15, primaryMax);
+        scene.add(capMeshEnd);
+      } else {
+        const capGeoStart = new THREE.PlaneGeometry(capWidth, capHeight);
+        const capMeshStart = new THREE.Mesh(capGeoStart, capMaterial);
+        capMeshStart.rotation.y = Math.PI / 2;
+        capMeshStart.position.set(primaryMin, avgFloorY + capHeight * 0.15, finalCenter.z);
+        scene.add(capMeshStart);
+
+        const capGeoEnd = new THREE.PlaneGeometry(capWidth, capHeight);
+        const capMeshEnd = new THREE.Mesh(capGeoEnd, capMaterial.clone());
+        capMeshEnd.rotation.y = Math.PI / 2;
+        capMeshEnd.position.set(primaryMax, avgFloorY + capHeight * 0.15, finalCenter.z);
+        scene.add(capMeshEnd);
+      }
+
+      // =====================================================
       // SPAWN Y MOVIMIENTO
       // =====================================================
 
       // 1. Determinar cuál lado del túnel es el más bajo
       const startsLow = firstY < lastY;
+      const exitPrimary = startsLow ? primaryMax : primaryMin;
 
       tunnelData = {
         primaryAxis,
         primaryMin,
         primaryMax,
-        startsLow
+        startsLow,
+        exitPrimary
       };
 
+      createTunnelExitGlow(scene, {
+        primaryAxis,
+        finalCenter,
+        avgFloorY,
+        corridorHalfWidth,
+        corridorHeight,
+        exitPrimary,
+        startsLow,
+      });
+
       // 2. Spawn en el extremo más bajo
-      const spawnOffset = Math.max(5.5, primarySize * 0.12);
+      const spawnOffset = Math.max(5.5, primarySize * 0.20);
       let spawnPrimary, lookAtPrimary, spawnFloorY;
 
       if (startsLow) {
@@ -541,21 +626,29 @@ export function updateScene3(time, player, dt) {
     const currentPos = playerPos[primaryAxis];
 
     let reachedEnd = false;
+    let reachedStart = false;
     if (startsLow) {
       // Spawn en primaryMin, camina hacia primaryMax
       if (currentPos > primaryMax - 6.0) {
         reachedEnd = true;
+      } else if (currentPos < primaryMin + 4.0) {
+        reachedStart = true;
       }
     } else {
       // Spawn en primaryMax, camina hacia primaryMin
       if (currentPos < primaryMin + 6.0) {
         reachedEnd = true;
+      } else if (currentPos > primaryMax - 4.0) {
+        reachedStart = true;
       }
     }
 
     if (reachedEnd && !sceneManagerInstance.isTransitioning) {
       const nextScene = sceneManagerInstance.previousSceneId === 'scene2' ? 'scene4' : 'scene2';
       sceneManagerInstance.switchSceneWithTransition(nextScene, activePhysicsWorld, activePlayer);
+    } else if (reachedStart && !sceneManagerInstance.isTransitioning) {
+      const prevScene = sceneManagerInstance.previousSceneId || 'scene2';
+      sceneManagerInstance.switchSceneWithTransition(prevScene, activePhysicsWorld, activePlayer);
     }
   }
 
@@ -575,9 +668,18 @@ export function updateScene3(time, player, dt) {
 
   tunnelLights.forEach((light, index) => {
     const phase = index * 1.3;
-    light.intensity = index === 0
-      ? 8 * (0.75 + 0.25 * Math.sin(time * 5 + phase))
-      : 2.5 * (0.7 + 0.3 * Math.cos(time * 3.5 + phase));
+
+    if (light.userData.animation === 'redPulse') {
+      light.intensity = 8 * (0.75 + 0.25 * Math.sin(time * 5 + phase));
+      return;
+    }
+
+    if (light.userData.animation === 'exitGlow') {
+      light.intensity = light.userData.baseIntensity * (0.82 + 0.18 * Math.sin(time * 2.2 + 0.4));
+      return;
+    }
+
+    light.intensity = 2.5 * (0.7 + 0.3 * Math.cos(time * 3.5 + phase));
   });
 
   if (!flashlightParticles || !flashlightParticleGeometry || !flashlightParticleMaterial || !activePlayer) return;

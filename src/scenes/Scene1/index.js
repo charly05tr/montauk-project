@@ -20,6 +20,9 @@ let activePhysicsWorld = null;
 let finalRoomBox = null;
 let blueAmbient = null;
 
+let bulbGlowTexture = null;
+const wallPointLights = [];
+
 // Objetos auxiliares creados por loadRoom() que deben limpiarse al re-entrar
 const sceneAuxObjects = [];
 
@@ -54,6 +57,41 @@ function getParticleTexture() {
   upsideDownParticleTexture = new THREE.CanvasTexture(canvas);
   upsideDownParticleTexture.colorSpace = THREE.SRGBColorSpace;
   return upsideDownParticleTexture;
+}
+
+function getGlowTexture() {
+  if (bulbGlowTexture) return bulbGlowTexture;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 64;
+
+  const ctx = canvas.getContext('2d');
+  const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gradient.addColorStop(0.0, 'rgba(255,255,255,1.0)');
+  gradient.addColorStop(0.2, 'rgba(255,255,255,0.8)');
+  gradient.addColorStop(0.5, 'rgba(255,255,255,0.35)');
+  gradient.addColorStop(1.0, 'rgba(255,255,255,0.0)');
+
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 64, 64);
+
+  bulbGlowTexture = new THREE.CanvasTexture(canvas);
+  bulbGlowTexture.colorSpace = THREE.SRGBColorSpace;
+  return bulbGlowTexture;
+}
+
+function getBulbNodeColor(node) {
+  let color = new THREE.Color(0xffffff);
+  node.traverse((child) => {
+    if (child.isMesh && child.material) {
+      const name = child.material.name;
+      if (xmasBulbMaterialNames.includes(name)) {
+        color = child.material.color;
+      }
+    }
+  });
+  return color;
 }
 
 function disposeUpsideDownParticles() {
@@ -144,7 +182,24 @@ function cleanupAlphabetState() {
     if (light.parent) light.parent.remove(light);
   });
   activeLights.length = 0;
+
+  // Limpiar y liberar sprites de los focos
+  alphabetBulbs.forEach(b => {
+    if (b.glowSprite) {
+      if (b.glowSprite.parent) b.glowSprite.parent.remove(b.glowSprite);
+      if (b.glowSprite.material) b.glowSprite.material.dispose();
+      b.glowSprite = null;
+    }
+  });
   alphabetBulbs.length = 0;
+
+  // Limpiar y liberar point lights de la pared
+  wallPointLights.forEach(light => {
+    if (light.parent) light.parent.remove(light);
+    light.dispose();
+  });
+  wallPointLights.length = 0;
+
   // Limpiar objetos del portal si existían
   cleanupPortalSequence();
 
@@ -631,6 +686,62 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
       // --- 3.5. RECOLECTAR Y MAPEAR FOQUITOS DEL ABECEDARIO ---
       collectAndMapBulbs(model);
 
+      // Crear sprites de brillo difuso para todas las bombillas con corrección de alineación
+      alphabetBulbs.forEach((entry) => {
+        const color = getBulbNodeColor(entry.node);
+        const spriteMaterial = new THREE.SpriteMaterial({
+          map: getGlowTexture(),
+          color: color.clone(),
+          transparent: true,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          opacity: 0.35
+        });
+        const sprite = new THREE.Sprite(spriteMaterial);
+        
+        // CORRECCIÓN MATEMÁTICA: Aislar el eje horizontal dominante (X o Z) para empujar perpendicularmente a la pared.
+        // Esto evita que los sprites se desplacen en diagonal o hacia abajo.
+        const dirToCenter = new THREE.Vector3().subVectors(finalRoomCenter, entry.worldPos);
+        if (Math.abs(dirToCenter.x) > Math.abs(dirToCenter.z)) {
+          dirToCenter.z = 0;
+        } else {
+          dirToCenter.x = 0;
+        }
+        dirToCenter.y = 0;
+        dirToCenter.normalize();
+        
+        sprite.position.copy(entry.worldPos).addScaledVector(dirToCenter, 0.08);
+        sprite.scale.set(0.25, 0.25, 1);
+        
+        scene.add(sprite);
+        entry.glowSprite = sprite;
+      });
+
+      // Crear 3 PointLights tenues distribuidos a lo largo del abecedario
+      const indicesToUse = [4, 12, 20];
+      indicesToUse.forEach((idx) => {
+        const bulb = alphabetBulbs[idx];
+        if (bulb) {
+          const color = getBulbNodeColor(bulb.node);
+          const pl = new THREE.PointLight(color.clone(), 0.3, 5.0, 1.5);
+          
+          // Mismo offset perpendicular para los PointLights
+          const dirToCenter = new THREE.Vector3().subVectors(finalRoomCenter, bulb.worldPos);
+          if (Math.abs(dirToCenter.x) > Math.abs(dirToCenter.z)) {
+            dirToCenter.z = 0;
+          } else {
+            dirToCenter.x = 0;
+          }
+          dirToCenter.y = 0;
+          dirToCenter.normalize();
+          
+          pl.position.copy(bulb.worldPos).addScaledVector(dirToCenter, 0.15);
+          
+          scene.add(pl);
+          wallPointLights.push(pl);
+        }
+      });
+
       // --- 4. RELOCALIZACIÓN DE LUCES (Relativas a la sala) ---
       redLight.position.set(finalRoomBox.min.x + 1, finalRoomBox.max.y - 0.5, finalRoomCenter.z);
       orangeLight.position.set(finalRoomBox.max.x - 1, finalRoomBox.max.y - 0.5, finalRoomCenter.z);
@@ -769,6 +880,54 @@ export function updateScene1(time, player, dt) {
   // Animar suavemente los PointLights de las letras iluminadas (pulso sutil)
   activeLights.forEach((light, i) => {
     light.intensity = 6.0 + 2.0 * Math.sin(time * 4.0 + i * 1.5);
+  });
+
+  // Animación de sprites de brillo difuso
+  alphabetBulbs.forEach(entry => {
+    if (!entry.glowSprite) return;
+
+    const isIlluminatedLetter = entry.pointLight !== null;
+
+    if (isUpsideDownActive) {
+      // Upside Down: Destellos intensos de energía pulsante
+      const pulse = Math.sin(time * 5.0 + entry.index) * 0.5 + 0.5; // 0.0 a 1.0
+      const currentScale = 0.35 + pulse * 0.25;
+      entry.glowSprite.scale.set(currentScale, currentScale, 1);
+      entry.glowSprite.material.opacity = 0.6 + pulse * 0.4;
+    } else if (isIlluminatedLetter) {
+      // Letra iluminada (escribiendo HELP): Destello brillante y rápido
+      const pulse = Math.sin(time * 8.0) * 0.5 + 0.5;
+      const currentScale = 0.45 + pulse * 0.15;
+      entry.glowSprite.scale.set(currentScale, currentScale, 1);
+      entry.glowSprite.material.opacity = 0.9 + pulse * 0.1;
+    } else {
+      // Modo Normal: Respiración tenue y acogedora
+      const breath = Math.sin(time * 1.5 + entry.index) * 0.5 + 0.5;
+      const currentScale = 0.22 + breath * 0.06;
+      entry.glowSprite.scale.set(currentScale, currentScale, 1);
+      entry.glowSprite.material.opacity = 0.3 + breath * 0.15;
+    }
+  });
+
+  // Animar los 3 PointLights de la pared
+  wallPointLights.forEach((light, i) => {
+    if (isUpsideDownActive) {
+      // Pulso dinámico de alta intensidad, tiñendo el ambiente de azul/violeta/color original
+      const pulse = Math.sin(time * 4.0 + i * 1.5) * 0.5 + 0.5;
+      light.intensity = 2.0 + pulse * 3.0; // 2.0 a 5.0
+
+      if (!light.userData.baseColor) {
+        light.userData.baseColor = light.color.clone();
+      }
+      const udColor = new THREE.Color(0x0033ff).lerp(light.userData.baseColor, 0.4);
+      light.color.copy(udColor);
+    } else {
+      // Modo Normal: Luz cálida tenue estática
+      light.intensity = 0.3;
+      if (light.userData.baseColor) {
+        light.color.copy(light.userData.baseColor);
+      }
+    }
   });
 
   // Actualizar la secuencia cinemática del portal (si está activa)

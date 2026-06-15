@@ -18,9 +18,105 @@ let redLight, orangeLight;
 let activePlayer = null;
 let activePhysicsWorld = null;
 let finalRoomBox = null;
+let blueAmbient = null;
 
 // Objetos auxiliares creados por loadRoom() que deben limpiarse al re-entrar
 const sceneAuxObjects = [];
+
+let isUpsideDownActive = false; // Upside down toggle (U key)
+
+// --- PARTICLES FOR UPSIDE DOWN ---
+let upsideDownParticles = null;
+let upsideDownParticleGeometry = null;
+let upsideDownParticleMaterial = null;
+let upsideDownParticleTexture = null;
+let upsideDownParticleBasePositions = null;
+let upsideDownParticleMotion = null;
+const PARTICLE_COUNT = 250; // Aún más reducido
+
+function getParticleTexture() {
+  if (upsideDownParticleTexture) return upsideDownParticleTexture;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 64;
+
+  const ctx = canvas.getContext('2d');
+  const gradient = ctx.createRadialGradient(32, 32, 2, 32, 32, 32);
+  gradient.addColorStop(0.0, 'rgba(255,255,255,1.0)');
+  gradient.addColorStop(0.22, 'rgba(200,230,255,0.95)');
+  gradient.addColorStop(0.58, 'rgba(100,150,255,0.32)');
+  gradient.addColorStop(1.0, 'rgba(50,100,200,0.0)');
+
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  upsideDownParticleTexture = new THREE.CanvasTexture(canvas);
+  upsideDownParticleTexture.colorSpace = THREE.SRGBColorSpace;
+  return upsideDownParticleTexture;
+}
+
+function disposeUpsideDownParticles() {
+  if (upsideDownParticles?.parent) {
+    upsideDownParticles.parent.remove(upsideDownParticles);
+  }
+  upsideDownParticleGeometry?.dispose();
+  upsideDownParticleMaterial?.dispose();
+
+  upsideDownParticles = null;
+  upsideDownParticleGeometry = null;
+  upsideDownParticleMaterial = null;
+  upsideDownParticleBasePositions = null;
+  upsideDownParticleMotion = null;
+}
+
+function createUpsideDownParticles(scene, finalRoomCenter, finalRoomSize) {
+  disposeUpsideDownParticles();
+
+  upsideDownParticleBasePositions = new Float32Array(PARTICLE_COUNT * 3);
+  upsideDownParticleMotion = new Float32Array(PARTICLE_COUNT * 4);
+  const positions = new Float32Array(PARTICLE_COUNT * 3);
+
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    const posOffset = i * 3;
+    const motionOffset = i * 4;
+
+    upsideDownParticleBasePositions[posOffset] = finalRoomCenter.x + (Math.random() - 0.5) * finalRoomSize.x;
+    upsideDownParticleBasePositions[posOffset + 1] = finalRoomCenter.y + (Math.random() - 0.5) * finalRoomSize.y;
+    upsideDownParticleBasePositions[posOffset + 2] = finalRoomCenter.z + (Math.random() - 0.5) * finalRoomSize.z;
+
+    positions[posOffset] = upsideDownParticleBasePositions[posOffset];
+    positions[posOffset + 1] = upsideDownParticleBasePositions[posOffset + 1];
+    positions[posOffset + 2] = upsideDownParticleBasePositions[posOffset + 2];
+
+    upsideDownParticleMotion[motionOffset] = Math.random() * Math.PI * 2;
+    upsideDownParticleMotion[motionOffset + 1] = THREE.MathUtils.lerp(0.18, 0.6, Math.random());
+    upsideDownParticleMotion[motionOffset + 2] = THREE.MathUtils.lerp(0.02, 0.09, Math.random());
+    upsideDownParticleMotion[motionOffset + 3] = THREE.MathUtils.lerp(0.02, 0.11, Math.random());
+  }
+
+  upsideDownParticleGeometry = new THREE.BufferGeometry();
+  upsideDownParticleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+  upsideDownParticleMaterial = new THREE.PointsMaterial({
+    map: getParticleTexture(),
+    color: 0x4488ff, // Azul más profundo, no tan blanco
+    size: 0.04,      // Partículas mucho más pequeñas
+    transparent: true,
+    opacity: 0.0,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    sizeAttenuation: true,
+    alphaTest: 0.02,
+    fog: true,
+  });
+
+  upsideDownParticles = new THREE.Points(upsideDownParticleGeometry, upsideDownParticleMaterial);
+  upsideDownParticles.frustumCulled = false;
+  upsideDownParticles.visible = false;
+  upsideDownParticles.renderOrder = 3;
+  scene.add(upsideDownParticles);
+}
 
 // --- SISTEMA DE ABECEDARIO INTERACTIVO ---
 // Mapeo de foquitos ordenados espacialmente a letras A-Z
@@ -264,6 +360,75 @@ function onAlphabetKeyDown(e) {
   if (e.key.length !== 1) return;
 
   const key = e.key.toLowerCase();
+  
+  if (key === 'u') {
+    // Upside Down Toggle
+    isUpsideDownActive = !isUpsideDownActive;
+    const globalAtmosphere = activeScene ? activeScene.getObjectByName("GlobalAtmosphereLight") : null;
+    
+    if (isUpsideDownActive) {
+      if (redLight) {
+        redLight.color.setHex(0x0033ff);
+        redLight.intensity = 1.0; // Fuerte para bañar la casa de azul
+      }
+      if (orangeLight) {
+        orangeLight.color.setHex(0x0033ff);
+        orangeLight.intensity = 1.0;
+      }
+      
+      if (globalAtmosphere) {
+        globalAtmosphere.color.setHex(0x001133);
+        globalAtmosphere.groundColor.setHex(0x000000);
+        globalAtmosphere.intensity = 0.1; // Matar luz global blanca
+      }
+      
+      if (blueAmbient) {
+        blueAmbient.intensity = 1.0; // Luz tenue azul garantizada
+      }
+      
+      if (activePlayer && activePlayer.flashlight) {
+        activePlayer.flashlight.color.setHex(0x0033ff); // Linterna puramente azul oscura
+      }
+      
+      // Añadir niebla fuertemente azulada
+      if (activeScene) {
+        activeScene.background = new THREE.Color(0x02081a);
+        activeScene.fog = new THREE.FogExp2(0x02081a, 0.10); // Densidad moderada-alta
+      }
+      
+    } else {
+      if (redLight) {
+        redLight.color.setHex(0xff2a12);
+        redLight.intensity = 0.05;
+      }
+      if (orangeLight) {
+        orangeLight.color.setHex(0xff6a18);
+        orangeLight.intensity = 0.05;
+      }
+      
+      if (globalAtmosphere) {
+        globalAtmosphere.color.setHex(0x5a7ba3);
+        globalAtmosphere.groundColor.setHex(0x3a4b66);
+        globalAtmosphere.intensity = 3;
+      }
+      
+      if (blueAmbient) {
+        blueAmbient.intensity = 0.0;
+      }
+      
+      if (activePlayer && activePlayer.flashlight) {
+        activePlayer.flashlight.color.setHex(0xffffff); // Linterna original
+      }
+      
+      // Quitar niebla
+      if (activeScene) {
+        activeScene.background = new THREE.Color(0x050a12);
+        activeScene.fog = new THREE.FogExp2(0x050a12, 0.05);
+      }
+    }
+    return;
+  }
+
   if (key < 'a' || key > 'z') return; // Solo letras
 
   // Reproducir sonido de tecla clic solo para las letras 'h', 'e', 'l', 'p'
@@ -344,6 +509,7 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
   activePlayer = player;
   activePhysicsWorld = physicsWorld;
   activeScene = scene;
+  isUpsideDownActive = false;
   cleanupAlphabetState();
 
   // Registrar listeners de interacción con bombillas
@@ -363,6 +529,10 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
   orangeLight.position.set(2.5, 3.75, -2.5)
   scene.add(orangeLight)
   sceneAuxObjects.push(orangeLight)
+
+  blueAmbient = new THREE.AmbientLight(0x0033ff, 0.0)
+  scene.add(blueAmbient)
+  sceneAuxObjects.push(blueAmbient)
 
   assetCache.loadGLTF('/models/stranger_things_room/scene.gltf', loadingManager).then(
     (gltf) => {
@@ -563,6 +733,8 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
       }
       player.setPosition(finalRoomCenter.x, spawnY, finalRoomCenter.z);
 
+      createUpsideDownParticles(scene, finalRoomCenter, finalRoomSize);
+
       setMainSceneReady();
       eventBus.emit('sceneReady', { sceneId: 'scene1' });
       setFloatingHelp('<b>Scene 1: The Anomaly</b><br><br><b>Controls:</b><br>- Click to enter<br>- WASD to move<br><br><b>Hints:</b><br>- Press ESC to unlock pointer<br>- The alphabet wall is waiting. Spell the word that describes what you need to escape...?');
@@ -575,9 +747,23 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
 }
 
 export function updateScene1(time, player, dt) {
-  xmasLights.forEach((light) => {
-    if (!light.userData.active) return;
-    light.intensity = light.userData.baseIntensity * (0.75 + 0.25 * Math.sin(time * 3.5 + light.userData.phase));
+  // Animar los materiales de los foquitos de navidad directamente
+  const uniqueMats = new Set();
+  alphabetBulbs.forEach(b => {
+    if (b.node && b.node.material) uniqueMats.add(b.node.material);
+  });
+
+  uniqueMats.forEach(mat => {
+    if (!mat.userData.baseColor) {
+      mat.userData.baseColor = mat.color.clone();
+    }
+    if (isUpsideDownActive) {
+      // Destello fuerte y pulsante (fuente de energía)
+      const pulse = 4.0 + 2.0 * Math.sin(time * 3.5 + mat.id);
+      mat.color.copy(mat.userData.baseColor).multiplyScalar(pulse);
+    } else {
+      mat.color.copy(mat.userData.baseColor);
+    }
   });
 
   // Animar suavemente los PointLights de las letras iluminadas (pulso sutil)
@@ -587,4 +773,46 @@ export function updateScene1(time, player, dt) {
 
   // Actualizar la secuencia cinemática del portal (si está activa)
   updatePortalSequence(time, dt);
+
+  // Controlar linterna Upside Down
+  if (isUpsideDownActive) {
+    if (player && player.flashlight && player.flashlightEnabled) {
+      player.flashlight.intensity = 20.0;
+    }
+  } else {
+    if (player && player.flashlight && player.flashlightEnabled) {
+      player.flashlight.intensity = 10.0;
+    }
+  }
+
+  // Animación de partículas Upside Down
+  if (upsideDownParticles && upsideDownParticleGeometry && upsideDownParticleMaterial) {
+    const positions = upsideDownParticleGeometry.attributes.position.array;
+
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const posOffset = i * 3;
+      const motionOffset = i * 4;
+      const baseX = upsideDownParticleBasePositions[posOffset];
+      const baseY = upsideDownParticleBasePositions[posOffset + 1];
+      const baseZ = upsideDownParticleBasePositions[posOffset + 2];
+      const phase = upsideDownParticleMotion[motionOffset];
+      const speed = upsideDownParticleMotion[motionOffset + 1];
+      const swayX = upsideDownParticleMotion[motionOffset + 2];
+      const swayY = upsideDownParticleMotion[motionOffset + 3];
+
+      positions[posOffset] = baseX + Math.sin(time * speed + phase) * swayX;
+      positions[posOffset + 1] = baseY + Math.cos(time * speed * 1.15 + phase * 1.7) * swayY;
+      positions[posOffset + 2] = baseZ + Math.sin(time * speed * 0.7 + phase * 0.6) * swayX;
+    }
+
+    upsideDownParticleGeometry.attributes.position.needsUpdate = true;
+
+    const targetOpacity = isUpsideDownActive ? 0.3 : 0.0;
+    upsideDownParticleMaterial.opacity = THREE.MathUtils.lerp(
+      upsideDownParticleMaterial.opacity,
+      targetOpacity,
+      0.05
+    );
+    upsideDownParticles.visible = upsideDownParticleMaterial.opacity > 0.01;
+  }
 }

@@ -54,7 +54,7 @@ class SceneManager {
         } else if (this.activeSceneId === 'scene3') {
             updateScene3(time, player, dt);
         } else if (this.activeSceneId === 'scene4') {
-            updateScene4(time);
+            updateScene4(time, player, dt);
         }
     }
 

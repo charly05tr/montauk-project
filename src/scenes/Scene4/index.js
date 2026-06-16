@@ -15,6 +15,8 @@ let sceneManagerInstance = null;
 let listenerAdded = false;
 let activeScene = null;
 let activePlayer = null;
+let rootsGroup = null;
+let rootViscousTexture = null;
 
 // --- PARTICLES FOR UPSIDE DOWN ---
 let upsideDownParticles = null;
@@ -113,6 +115,7 @@ export function applyUpsideDownState() {
   const globalAtmosphere = activeScene ? activeScene.getObjectByName("GlobalAtmosphereLight") : null;
 
   if (isUpsideDownActive) {
+    if (rootsGroup) rootsGroup.visible = true;
     // Luz muy potente y vívida en tonos cyan/azul
     if (redLight) redLight.color.setHex(0x0022ff);
     if (orangeLight) orangeLight.color.setHex(0x0022ff);
@@ -134,6 +137,7 @@ export function applyUpsideDownState() {
       activeScene.fog = new THREE.FogExp2(0x01050a, 0.15);
     }
   } else {
+    if (rootsGroup) rootsGroup.visible = false;
     // Restaurar colores originales
     if (redLight) redLight.color.setHex(0xff2a12);
     if (orangeLight) orangeLight.color.setHex(0xff6a18);
@@ -161,7 +165,7 @@ export function loadSchoolScene(scene, physicsWorld, player, sceneManager) {
   sceneManagerInstance = sceneManager;
   activeScene = scene;
   activePlayer = player;
-  isUpsideDownActive = sceneManager.isUpsideDownActive || false;
+  isUpsideDownActive = sceneManager.isUpsideDownActive;
 
   // Luces Base (La posición se ajustará matemáticamente después de cargar la sala)
   flashAmbient = new THREE.AmbientLight(0xffffff, 0.0);
@@ -369,6 +373,134 @@ export function loadSchoolScene(scene, physicsWorld, player, sceneManager) {
       // Crear partículas Upside Down
       createUpsideDownParticles(scene, finalRoomCenter, finalRoomSize);
 
+      // --- CARGAR RAÍCES (Upside Down) ---
+      rootsGroup = new THREE.Group();
+      rootsGroup.visible = isUpsideDownActive;
+      scene.add(rootsGroup);
+
+      // Cargar textura viscosa para las raíces
+      if (!rootViscousTexture) {
+        rootViscousTexture = new THREE.TextureLoader(loadingManager).load('/models/Tunel/texture/text_tunel.jpeg');
+        rootViscousTexture.colorSpace = THREE.SRGBColorSpace;
+        rootViscousTexture.wrapS = THREE.RepeatWrapping;
+        rootViscousTexture.wrapT = THREE.RepeatWrapping;
+        rootViscousTexture.repeat.set(1, 3);
+      }
+
+      assetCache.loadGLTF('/models/root.glb', loadingManager).then((rootGltf) => {
+        const baseRoot = rootGltf.scene;
+
+        // Aplicar material viscoso a la raíz base
+        baseRoot.traverse((child) => {
+          if (child.isMesh) {
+            const oldMat = Array.isArray(child.material) ? child.material[0] : child.material;
+            const newMat = oldMat ? oldMat.clone() : new THREE.MeshStandardMaterial();
+
+            newMat.map = rootViscousTexture;
+            newMat.color = new THREE.Color(0xffffff);
+            newMat.emissive = new THREE.Color(0x0a1a3a);
+            newMat.emissiveIntensity = 0.25;
+            newMat.roughness = 0.25;
+            newMat.metalness = 0.0;
+            newMat.side = THREE.DoubleSide;
+            newMat.needsUpdate = true;
+
+            child.material = newMat;
+          }
+        });
+
+        // Calcular escala base para que cada raíz mida aprox 1.5 metros
+        const rootBox = new THREE.Box3().setFromObject(baseRoot);
+        const sizeVec = rootBox.getSize(new THREE.Vector3());
+        const rootSize = Math.max(sizeVec.x, sizeVec.y, sizeVec.z) || 1.0;
+        const baseScale = 1.5 / rootSize;
+
+        // Recolectar solo mallas visibles y estructurales para el raycast
+        const validMeshes = [];
+        model.traverse((child) => {
+          if (child.isMesh && child.visible) {
+            const name = child.name.toLowerCase();
+            if (!name.includes('collider') && !name.includes('box') && !name.includes('glass') && !name.includes('light')) {
+              validMeshes.push(child);
+            }
+          }
+        });
+
+        const raycaster = new THREE.Raycaster();
+        let placed = 0;
+        let attempts = 0;
+        const maxRoots = 80; // Bajamos el límite para que no sature y se mantenga disperso y ordenado
+        const minDistanceBetweenRoots = 1.5; // Mayor separación para una escena más amplia
+        const placedPositions = [];
+
+        // Intentar colocar hasta 80 raíces dispersas
+        while (placed < maxRoots && attempts < 1500) {
+          attempts++;
+          const rx = finalRoomCenter.x + (Math.random() - 0.5) * finalRoomSize.x * 0.95;
+          const ry = finalRoomCenter.y + (Math.random() - 0.5) * finalRoomSize.y * 0.95;
+          const rz = finalRoomCenter.z + (Math.random() - 0.5) * finalRoomSize.z * 0.95;
+
+          const dir = new THREE.Vector3(
+            (Math.random() - 0.5) * 2.0,
+            (Math.random() - 0.5) * 2.0,
+            (Math.random() - 0.5) * 2.0
+          ).normalize();
+
+          raycaster.set(new THREE.Vector3(rx, ry, rz), dir);
+          const hits = raycaster.intersectObjects(validMeshes, false);
+
+          if (hits.length > 0) {
+            const hit = hits[0];
+
+            // Ignorar si pegó en un techo o si la normal apunta muy hacia abajo
+            if (hit.face && hit.face.normal.clone().transformDirection(hit.object.matrixWorld).y < -0.5) continue;
+
+            // Ignorar si pegó en un objeto muy pequeño
+            if (hit.distance < 0.1) continue;
+
+            // Validar distancia mínima contra raíces ya colocadas para asegurar dispersión
+            let tooClose = false;
+            for (const pos of placedPositions) {
+              if (pos.distanceTo(hit.point) < minDistanceBetweenRoots) {
+                tooClose = true;
+                break;
+              }
+            }
+            if (tooClose) continue;
+
+            const clone = baseRoot.clone();
+
+            // Variación de escala (entre 0.4x y 1.2x)
+            clone.scale.setScalar(baseScale * (Math.random() * 0.8 + 0.4));
+
+            // Hundir un poquito la raíz en la pared para que no se vea el corte
+            clone.position.copy(hit.point).add(hit.face.normal.clone().multiplyScalar(-0.1));
+
+            // Alinear el eje Y de la raíz con la normal de la pared/piso
+            const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), hit.face.normal);
+            clone.quaternion.copy(quaternion);
+
+            // Girarla en su propio eje para variedad
+            clone.rotateY(Math.random() * Math.PI * 2);
+
+            // Acostarla un poco aleatoriamente para que "trepe" por la superficie
+            clone.rotateX((Math.random() * 0.6) + 0.2);
+
+            clone.traverse((child) => {
+              if (child.isMesh) {
+                child.castShadow = ENABLE_SHADOWS;
+                child.receiveShadow = ENABLE_SHADOWS;
+              }
+            });
+
+            rootsGroup.add(clone);
+            placedPositions.push(hit.point.clone());
+            placed++;
+          }
+        }
+      }).catch(err => console.error("Error loading roots in Scene4:", err));
+
+
       setMainSceneReady();
       eventBus.emit('sceneReady', { sceneId: 'scene4' });
       setFloatingHelp('<b>Scene: The Origins (Hawking lab`s school)</b><br><br><b>Controls:</b><br>- Click to enter<br>- WASD to move<br>- Press "U" for Upside Down Mode<br>- F to toggle flashlight<br><br><b>Exit:</b><br>- Press ESC to unlock pointer<br>- Type "HELP" to teleport');
@@ -442,5 +574,10 @@ export function updateScene4(time, player, dt) {
       0.08
     );
     upsideDownParticles.visible = upsideDownParticleMaterial.opacity > 0.01;
+  }
+
+  // Animar textura de las raíces
+  if (isUpsideDownActive && rootViscousTexture && dt) {
+    rootViscousTexture.offset.y -= dt * 0.15;
   }
 }

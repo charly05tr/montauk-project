@@ -920,33 +920,45 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
         let placed = 0;
         let attempts = 0;
         const maxRoots = 80;
-        
-        while (placed < maxRoots && attempts < 1000) {
+        const minDistanceBetweenRoots = 1.0; // Distancia mínima en metros para evitar amontonamiento
+        const placedPositions = [];
+
+        while (placed < maxRoots && attempts < 1500) {
           attempts++;
-          const rx = finalRoomCenter.x + (Math.random() - 0.5) * finalRoomSize.x * 0.9;
-          const ry = finalRoomCenter.y + (Math.random() - 0.5) * finalRoomSize.y * 0.9;
-          const rz = finalRoomCenter.z + (Math.random() - 0.5) * finalRoomSize.z * 0.9;
-          
+          const rx = finalRoomCenter.x + (Math.random() - 0.5) * finalRoomSize.x * 0.95;
+          const ry = finalRoomCenter.y + (Math.random() - 0.5) * finalRoomSize.y * 0.95;
+          const rz = finalRoomCenter.z + (Math.random() - 0.5) * finalRoomSize.z * 0.95;
+
           const dir = new THREE.Vector3(
             (Math.random() - 0.5) * 2.0,
             (Math.random() - 0.5) * 2.0,
             (Math.random() - 0.5) * 2.0
           ).normalize();
-          
+
           raycaster.set(new THREE.Vector3(rx, ry, rz), dir);
           const hits = raycaster.intersectObjects(validMeshes, true);
-          
+
           if (hits.length > 0) {
             const hit = hits[0];
-            
+
             if (hit.face) {
               const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
-              
+
               // Si la normal apunta hacia abajo (es un techo), ignoramos y probamos de nuevo
               if (normal.y < -0.5) continue;
 
+              // Validar distancia mínima contra raíces ya colocadas para asegurar dispersión
+              let tooClose = false;
+              for (const pos of placedPositions) {
+                if (pos.distanceTo(hit.point) < minDistanceBetweenRoots) {
+                  tooClose = true;
+                  break;
+                }
+              }
+              if (tooClose) continue;
+
               const rootClone = baseRoot.clone();
-              
+
               const scaleVariation = Math.random() * 0.8 + 0.5;
               rootClone.scale.setScalar(baseScale * scaleVariation);
               rootClone.position.copy(hit.point);
@@ -960,6 +972,7 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
                 rootClone.rotateY(Math.random() * Math.PI * 2);
               }
               rootsGroup.add(rootClone);
+              placedPositions.push(hit.point.clone());
               placed++;
             }
           }

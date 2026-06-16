@@ -1,4 +1,5 @@
 import { isMobile } from '../../utils/deviceDetection.js';
+import { isGameActive } from '../../core/GameSession.js';
 
 let helpText
 let floatingHelpContainer
@@ -198,6 +199,7 @@ export function initOverlay() {
 
   // Toggle con tecla Q
   window.addEventListener('keydown', (e) => {
+    if (!isGameActive()) return;
     if (e.key.toLowerCase() === 'q') {
       toggleFloatingTooltip();
     }
@@ -373,4 +375,3 @@ export function fadeInFromBlack(durationMs = 1200) {
     setTimeout(resolve, durationMs);
   });
 }
-

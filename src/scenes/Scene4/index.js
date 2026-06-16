@@ -7,6 +7,7 @@ import { getMaterialName, tuneSchoolMaterial } from './objects.js';
 import { createStaticBox, createBoxFromMesh, createTrimeshFromMesh } from '../../physics/Collider.js';
 import { soundManager } from '../../core/SoundManager.js';
 import { eventBus } from '../../utils/eventBus.js';
+import { getRenderer } from '../../core/Renderer.js';
 
 export let redLight, orangeLight;
 let flashAmbient = null;
@@ -15,8 +16,10 @@ let sceneManagerInstance = null;
 let listenerAdded = false;
 let activeScene = null;
 let activePlayer = null;
+let activeModel = null;
 let rootsGroup = null;
 let rootViscousTexture = null;
+let scene4EntryCount = 0;
 
 // --- PARTICLES FOR UPSIDE DOWN ---
 let upsideDownParticles = null;
@@ -26,6 +29,143 @@ let upsideDownParticleTexture = null;
 let upsideDownParticleBasePositions = null;
 let upsideDownParticleMotion = null;
 const PARTICLE_COUNT = 460;
+
+function formatDebugNumber(value) {
+  return typeof value === 'number' ? Number(value.toFixed(4)) : null;
+}
+
+function colorToHex(color) {
+  return color?.isColor ? `#${color.getHexString()}` : null;
+}
+
+function colorLuminance(color) {
+  if (!color?.isColor) return null;
+  return formatDebugNumber((0.2126 * color.r) + (0.7152 * color.g) + (0.0722 * color.b));
+}
+
+function collectLightCounts(scene) {
+  const counts = {
+    total: 0,
+    AmbientLight: 0,
+    HemisphereLight: 0,
+    PointLight: 0,
+    SpotLight: 0,
+    DirectionalLight: 0,
+  };
+
+  if (!scene) return counts;
+
+  scene.traverse((child) => {
+    if (!child.isLight) return;
+    counts.total += 1;
+    counts[child.type] = (counts[child.type] || 0) + 1;
+  });
+
+  return counts;
+}
+
+function collectMaterialSnapshot(model) {
+  if (!model) return null;
+
+  let materialCount = 0;
+  let transparentCount = 0;
+  let colorLumaSum = 0;
+  let emissiveLumaSum = 0;
+  const samples = [];
+
+  model.traverse((child) => {
+    if (!child.isMesh || !child.material) return;
+
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    for (const material of materials) {
+      if (!material) continue;
+
+      materialCount += 1;
+      colorLumaSum += colorLuminance(material.color) ?? 0;
+      emissiveLumaSum += colorLuminance(material.emissive) ?? 0;
+      if (material.transparent) transparentCount += 1;
+
+      if (samples.length < 6) {
+        samples.push({
+          mesh: child.name,
+          material: material.name || '(unnamed)',
+          color: colorToHex(material.color),
+          colorLuminance: colorLuminance(material.color),
+          emissive: colorToHex(material.emissive),
+          emissiveLuminance: colorLuminance(material.emissive),
+          opacity: formatDebugNumber(material.opacity),
+          transparent: !!material.transparent,
+        });
+      }
+    }
+  });
+
+  return {
+    materialCount,
+    transparentCount,
+    avgColorLuminance: materialCount > 0 ? formatDebugNumber(colorLumaSum / materialCount) : null,
+    avgEmissiveLuminance: materialCount > 0 ? formatDebugNumber(emissiveLumaSum / materialCount) : null,
+    samples,
+  };
+}
+
+function logScene4LightingSnapshot(stage) {
+  if (!activeScene) return;
+
+  const renderer = getRenderer();
+  const globalAtmosphere = activeScene.getObjectByName('GlobalAtmosphereLight');
+  const fog = activeScene.fog;
+
+  console.groupCollapsed(`[Scene4][Lighting][entry ${scene4EntryCount}] ${stage}`);
+  console.log({
+    upsideDownActive: isUpsideDownActive,
+    renderer: renderer ? {
+      toneMapping: renderer.toneMapping,
+      toneMappingExposure: formatDebugNumber(renderer.toneMappingExposure),
+    } : null,
+    scene: {
+      background: colorToHex(activeScene.background),
+      hasEnvironment: !!activeScene.environment,
+      fog: fog ? {
+        type: fog.type,
+        color: colorToHex(fog.color),
+        density: formatDebugNumber(fog.density),
+        near: formatDebugNumber(fog.near),
+        far: formatDebugNumber(fog.far),
+      } : null,
+      lightCounts: collectLightCounts(activeScene),
+    },
+    atmosphere: globalAtmosphere ? {
+      color: colorToHex(globalAtmosphere.color),
+      groundColor: colorToHex(globalAtmosphere.groundColor),
+      intensity: formatDebugNumber(globalAtmosphere.intensity),
+    } : null,
+    localLights: {
+      flashAmbient: flashAmbient ? {
+        color: colorToHex(flashAmbient.color),
+        intensity: formatDebugNumber(flashAmbient.intensity),
+      } : null,
+      redLight: redLight ? {
+        color: colorToHex(redLight.color),
+        intensity: formatDebugNumber(redLight.intensity),
+      } : null,
+      orangeLight: orangeLight ? {
+        color: colorToHex(orangeLight.color),
+        intensity: formatDebugNumber(orangeLight.intensity),
+      } : null,
+    },
+    particles: upsideDownParticleMaterial ? {
+      opacity: formatDebugNumber(upsideDownParticleMaterial.opacity),
+      visible: !!upsideDownParticles?.visible,
+    } : null,
+    rootsVisible: !!rootsGroup?.visible,
+    model: activeModel ? {
+      uuid: activeModel.uuid,
+      materialSnapshot: collectMaterialSnapshot(activeModel),
+    } : null,
+  });
+  console.groupEnd();
+}
 
 function getParticleTexture() {
   if (upsideDownParticleTexture) return upsideDownParticleTexture;
@@ -159,13 +299,19 @@ export function applyUpsideDownState() {
       activeScene.fog = new THREE.FogExp2(0x050a12, 0.05);
     }
   }
+
+  logScene4LightingSnapshot('applyUpsideDownState');
 }
 
 export function loadSchoolScene(scene, physicsWorld, player, sceneManager) {
   sceneManagerInstance = sceneManager;
   activeScene = scene;
   activePlayer = player;
+  activeModel = null;
   isUpsideDownActive = sceneManager.isUpsideDownActive;
+  scene4EntryCount += 1;
+  scene.userData.sceneId = 'scene4';
+  scene.userData.scene4EntryCount = scene4EntryCount;
 
   // Luces Base (La posición se ajustará matemáticamente después de cargar la sala)
   flashAmbient = new THREE.AmbientLight(0xffffff, 0.0);
@@ -199,6 +345,7 @@ export function loadSchoolScene(scene, physicsWorld, player, sceneManager) {
   assetCache.loadGLTF('/models/Escuela.glb', loadingManager).then(
     (gltf) => {
       const model = gltf.scene;
+      activeModel = model;
 
       if (!model.userData.isConfigured) {
         const initialBox = new THREE.Box3().setFromObject(model);
@@ -500,6 +647,10 @@ export function loadSchoolScene(scene, physicsWorld, player, sceneManager) {
         }
       }).catch(err => console.error("Error loading roots in Scene4:", err));
 
+      // Reaplicar el estado al final de la carga para restaurar exactamente
+      // la iluminación de la escena 4 una vez que ya existe toda la escena.
+      applyUpsideDownState();
+      logScene4LightingSnapshot('sceneReady');
 
       setMainSceneReady();
       eventBus.emit('sceneReady', { sceneId: 'scene4' });

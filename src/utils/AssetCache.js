@@ -1,9 +1,24 @@
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 
 class AssetCache {
     constructor() {
         this.cache = new Map();
         this.loadingPromises = new Map();
+    }
+
+    cloneGLTF(gltf) {
+        if (!gltf?.scene) {
+            return gltf;
+        }
+
+        return {
+            ...gltf,
+            // Cada carga recibe una escena independiente para evitar que
+            // transformaciones, materiales o visibilidades se acumulen
+            // sobre el original cacheado entre transiciones.
+            scene: cloneSkeleton(gltf.scene),
+        };
     }
 
     /**
@@ -15,11 +30,11 @@ class AssetCache {
      */
     async loadGLTF(url, loadingManager = undefined) {
         if (this.cache.has(url)) {
-            return this.cache.get(url);
+            return this.cloneGLTF(this.cache.get(url));
         }
 
         if (this.loadingPromises.has(url)) {
-            return this.loadingPromises.get(url);
+            return this.loadingPromises.get(url).then((gltf) => this.cloneGLTF(gltf));
         }
 
         const promise = new Promise((resolve, reject) => {
@@ -41,7 +56,7 @@ class AssetCache {
         });
 
         this.loadingPromises.set(url, promise);
-        return promise;
+        return promise.then((gltf) => this.cloneGLTF(gltf));
     }
 }
 

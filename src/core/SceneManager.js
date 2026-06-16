@@ -176,6 +176,7 @@ class SceneManager {
         // Scene 2
         preloadTasks.push(assetCache.loadGLTF('/models/Velez_Paiz.glb', loadingManager));
         preloadTasks.push(assetCache.loadGLTF('/models/demogorgon.glb', loadingManager));
+        preloadTasks.push(assetCache.loadGLTF('/models/root.glb', loadingManager));
 
         // Scene 3
         preloadTasks.push(assetCache.loadGLTF('/models/Tunel/tunelST.glb', loadingManager));

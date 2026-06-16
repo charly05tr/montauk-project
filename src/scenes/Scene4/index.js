@@ -7,11 +7,316 @@ import { getMaterialName, tuneSchoolMaterial } from './objects.js';
 import { createStaticBox, createBoxFromMesh, createTrimeshFromMesh } from '../../physics/Collider.js';
 import { soundManager } from '../../core/SoundManager.js';
 import { eventBus } from '../../utils/eventBus.js';
+import { getRenderer } from '../../core/Renderer.js';
 
 export let redLight, orangeLight;
+let flashAmbient = null;
+let isUpsideDownActive = false;
+let sceneManagerInstance = null;
+let listenerAdded = false;
+let activeScene = null;
+let activePlayer = null;
+let activeModel = null;
+let rootsGroup = null;
+let rootViscousTexture = null;
+let scene4EntryCount = 0;
 
-export function loadSchoolScene(scene, physicsWorld, player) {
+// --- PARTICLES FOR UPSIDE DOWN ---
+let upsideDownParticles = null;
+let upsideDownParticleGeometry = null;
+let upsideDownParticleMaterial = null;
+let upsideDownParticleTexture = null;
+let upsideDownParticleBasePositions = null;
+let upsideDownParticleMotion = null;
+const PARTICLE_COUNT = 460;
+
+function formatDebugNumber(value) {
+  return typeof value === 'number' ? Number(value.toFixed(4)) : null;
+}
+
+function colorToHex(color) {
+  return color?.isColor ? `#${color.getHexString()}` : null;
+}
+
+function colorLuminance(color) {
+  if (!color?.isColor) return null;
+  return formatDebugNumber((0.2126 * color.r) + (0.7152 * color.g) + (0.0722 * color.b));
+}
+
+function collectLightCounts(scene) {
+  const counts = {
+    total: 0,
+    AmbientLight: 0,
+    HemisphereLight: 0,
+    PointLight: 0,
+    SpotLight: 0,
+    DirectionalLight: 0,
+  };
+
+  if (!scene) return counts;
+
+  scene.traverse((child) => {
+    if (!child.isLight) return;
+    counts.total += 1;
+    counts[child.type] = (counts[child.type] || 0) + 1;
+  });
+
+  return counts;
+}
+
+function collectMaterialSnapshot(model) {
+  if (!model) return null;
+
+  let materialCount = 0;
+  let transparentCount = 0;
+  let colorLumaSum = 0;
+  let emissiveLumaSum = 0;
+  const samples = [];
+
+  model.traverse((child) => {
+    if (!child.isMesh || !child.material) return;
+
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    for (const material of materials) {
+      if (!material) continue;
+
+      materialCount += 1;
+      colorLumaSum += colorLuminance(material.color) ?? 0;
+      emissiveLumaSum += colorLuminance(material.emissive) ?? 0;
+      if (material.transparent) transparentCount += 1;
+
+      if (samples.length < 6) {
+        samples.push({
+          mesh: child.name,
+          material: material.name || '(unnamed)',
+          color: colorToHex(material.color),
+          colorLuminance: colorLuminance(material.color),
+          emissive: colorToHex(material.emissive),
+          emissiveLuminance: colorLuminance(material.emissive),
+          opacity: formatDebugNumber(material.opacity),
+          transparent: !!material.transparent,
+        });
+      }
+    }
+  });
+
+  return {
+    materialCount,
+    transparentCount,
+    avgColorLuminance: materialCount > 0 ? formatDebugNumber(colorLumaSum / materialCount) : null,
+    avgEmissiveLuminance: materialCount > 0 ? formatDebugNumber(emissiveLumaSum / materialCount) : null,
+    samples,
+  };
+}
+
+function logScene4LightingSnapshot(stage) {
+  if (!activeScene) return;
+
+  const renderer = getRenderer();
+  const globalAtmosphere = activeScene.getObjectByName('GlobalAtmosphereLight');
+  const fog = activeScene.fog;
+
+  console.groupCollapsed(`[Scene4][Lighting][entry ${scene4EntryCount}] ${stage}`);
+  console.log({
+    upsideDownActive: isUpsideDownActive,
+    renderer: renderer ? {
+      toneMapping: renderer.toneMapping,
+      toneMappingExposure: formatDebugNumber(renderer.toneMappingExposure),
+    } : null,
+    scene: {
+      background: colorToHex(activeScene.background),
+      hasEnvironment: !!activeScene.environment,
+      fog: fog ? {
+        type: fog.type,
+        color: colorToHex(fog.color),
+        density: formatDebugNumber(fog.density),
+        near: formatDebugNumber(fog.near),
+        far: formatDebugNumber(fog.far),
+      } : null,
+      lightCounts: collectLightCounts(activeScene),
+    },
+    atmosphere: globalAtmosphere ? {
+      color: colorToHex(globalAtmosphere.color),
+      groundColor: colorToHex(globalAtmosphere.groundColor),
+      intensity: formatDebugNumber(globalAtmosphere.intensity),
+    } : null,
+    localLights: {
+      flashAmbient: flashAmbient ? {
+        color: colorToHex(flashAmbient.color),
+        intensity: formatDebugNumber(flashAmbient.intensity),
+      } : null,
+      redLight: redLight ? {
+        color: colorToHex(redLight.color),
+        intensity: formatDebugNumber(redLight.intensity),
+      } : null,
+      orangeLight: orangeLight ? {
+        color: colorToHex(orangeLight.color),
+        intensity: formatDebugNumber(orangeLight.intensity),
+      } : null,
+    },
+    particles: upsideDownParticleMaterial ? {
+      opacity: formatDebugNumber(upsideDownParticleMaterial.opacity),
+      visible: !!upsideDownParticles?.visible,
+    } : null,
+    rootsVisible: !!rootsGroup?.visible,
+    model: activeModel ? {
+      uuid: activeModel.uuid,
+      materialSnapshot: collectMaterialSnapshot(activeModel),
+    } : null,
+  });
+  console.groupEnd();
+}
+
+function getParticleTexture() {
+  if (upsideDownParticleTexture) return upsideDownParticleTexture;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 64;
+
+  const ctx = canvas.getContext('2d');
+  const gradient = ctx.createRadialGradient(32, 32, 2, 32, 32, 32);
+  gradient.addColorStop(0.0, 'rgba(255,255,255,1.0)');
+  gradient.addColorStop(0.22, 'rgba(200,230,255,0.95)');
+  gradient.addColorStop(0.58, 'rgba(100,150,255,0.32)');
+  gradient.addColorStop(1.0, 'rgba(50,100,200,0.0)');
+
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  upsideDownParticleTexture = new THREE.CanvasTexture(canvas);
+  upsideDownParticleTexture.colorSpace = THREE.SRGBColorSpace;
+  return upsideDownParticleTexture;
+}
+
+function disposeUpsideDownParticles() {
+  if (upsideDownParticles?.parent) {
+    upsideDownParticles.parent.remove(upsideDownParticles);
+  }
+  upsideDownParticleGeometry?.dispose();
+  upsideDownParticleMaterial?.dispose();
+
+  upsideDownParticles = null;
+  upsideDownParticleGeometry = null;
+  upsideDownParticleMaterial = null;
+  upsideDownParticleBasePositions = null;
+  upsideDownParticleMotion = null;
+}
+
+function createUpsideDownParticles(scene, finalRoomCenter, finalRoomSize) {
+  disposeUpsideDownParticles();
+
+  upsideDownParticleBasePositions = new Float32Array(PARTICLE_COUNT * 3);
+  upsideDownParticleMotion = new Float32Array(PARTICLE_COUNT * 4);
+  const positions = new Float32Array(PARTICLE_COUNT * 3);
+
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    const posOffset = i * 3;
+    const motionOffset = i * 4;
+
+    upsideDownParticleBasePositions[posOffset] = finalRoomCenter.x + (Math.random() - 0.5) * finalRoomSize.x;
+    upsideDownParticleBasePositions[posOffset + 1] = finalRoomCenter.y + (Math.random() - 0.5) * finalRoomSize.y;
+    upsideDownParticleBasePositions[posOffset + 2] = finalRoomCenter.z + (Math.random() - 0.5) * finalRoomSize.z;
+
+    positions[posOffset] = upsideDownParticleBasePositions[posOffset];
+    positions[posOffset + 1] = upsideDownParticleBasePositions[posOffset + 1];
+    positions[posOffset + 2] = upsideDownParticleBasePositions[posOffset + 2];
+
+    upsideDownParticleMotion[motionOffset] = Math.random() * Math.PI * 2;
+    upsideDownParticleMotion[motionOffset + 1] = THREE.MathUtils.lerp(0.18, 0.6, Math.random());
+    upsideDownParticleMotion[motionOffset + 2] = THREE.MathUtils.lerp(0.02, 0.09, Math.random());
+    upsideDownParticleMotion[motionOffset + 3] = THREE.MathUtils.lerp(0.02, 0.11, Math.random());
+  }
+
+  upsideDownParticleGeometry = new THREE.BufferGeometry();
+  upsideDownParticleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+  upsideDownParticleMaterial = new THREE.PointsMaterial({
+    map: getParticleTexture(),
+    color: 0xcfe8ff,
+    size: 0.075,
+    transparent: true,
+    opacity: 0.0,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    sizeAttenuation: true,
+    alphaTest: 0.02,
+    fog: true,
+  });
+
+  upsideDownParticles = new THREE.Points(upsideDownParticleGeometry, upsideDownParticleMaterial);
+  upsideDownParticles.frustumCulled = false;
+  upsideDownParticles.visible = false;
+  upsideDownParticles.renderOrder = 3;
+  scene.add(upsideDownParticles);
+}
+
+export function applyUpsideDownState() {
+  const globalAtmosphere = activeScene ? activeScene.getObjectByName("GlobalAtmosphereLight") : null;
+
+  if (isUpsideDownActive) {
+    if (rootsGroup) rootsGroup.visible = true;
+    // Luz muy potente y vívida en tonos cyan/azul
+    if (redLight) redLight.color.setHex(0x0022ff);
+    if (orangeLight) orangeLight.color.setHex(0x0022ff);
+    if (flashAmbient) flashAmbient.color.setHex(0x0000ff);
+
+    if (globalAtmosphere) {
+      globalAtmosphere.color.setHex(0x001133);
+      globalAtmosphere.groundColor.setHex(0x000000);
+      globalAtmosphere.intensity = 0.1;
+    }
+
+    if (activePlayer && activePlayer.flashlight) {
+      activePlayer.flashlight.color.setHex(0x0033ff);
+    }
+
+    // Añadir niebla fuertemente azulada
+    if (activeScene) {
+      activeScene.background = new THREE.Color(0x01050a);
+      activeScene.fog = new THREE.FogExp2(0x01050a, 0.15);
+    }
+  } else {
+    if (rootsGroup) rootsGroup.visible = false;
+    // Restaurar colores originales
+    if (redLight) redLight.color.setHex(0xff2a12);
+    if (orangeLight) orangeLight.color.setHex(0xff6a18);
+    if (flashAmbient) flashAmbient.color.setHex(0xffffff);
+
+    if (globalAtmosphere) {
+      globalAtmosphere.color.setHex(0x5a7ba3);
+      globalAtmosphere.groundColor.setHex(0x3a4b66);
+      globalAtmosphere.intensity = 3;
+    }
+
+    if (activePlayer && activePlayer.flashlight) {
+      activePlayer.flashlight.color.setHex(0xffffff);
+    }
+
+    // Quitar niebla
+    if (activeScene) {
+      activeScene.background = new THREE.Color(0x050a12);
+      activeScene.fog = new THREE.FogExp2(0x050a12, 0.05);
+    }
+  }
+
+  logScene4LightingSnapshot('applyUpsideDownState');
+}
+
+export function loadSchoolScene(scene, physicsWorld, player, sceneManager) {
+  sceneManagerInstance = sceneManager;
+  activeScene = scene;
+  activePlayer = player;
+  activeModel = null;
+  isUpsideDownActive = sceneManager.isUpsideDownActive;
+  scene4EntryCount += 1;
+  scene.userData.sceneId = 'scene4';
+  scene.userData.scene4EntryCount = scene4EntryCount;
+
   // Luces Base (La posición se ajustará matemáticamente después de cargar la sala)
+  flashAmbient = new THREE.AmbientLight(0xffffff, 0.0);
+  scene.add(flashAmbient);
+
   redLight = new THREE.PointLight(0xff2a12, 1.5, 20, 2);
   redLight.position.set(-3, 5, 1);
   scene.add(redLight);
@@ -20,9 +325,27 @@ export function loadSchoolScene(scene, physicsWorld, player) {
   orangeLight.position.set(2.5, 3.75, -2.5);
   scene.add(orangeLight);
 
+  if (!listenerAdded) {
+    window.addEventListener('keydown', (e) => {
+      const key = e.key.toLowerCase();
+      if (key === 'u') {
+        // Solo responder si estamos en Scene4
+        if (!activeScene) return;
+
+        isUpsideDownActive = !isUpsideDownActive;
+        if (sceneManagerInstance) sceneManagerInstance.isUpsideDownActive = isUpsideDownActive;
+        applyUpsideDownState();
+      }
+    });
+    listenerAdded = true;
+  }
+
+  applyUpsideDownState();
+
   assetCache.loadGLTF('/models/Escuela.glb', loadingManager).then(
     (gltf) => {
       const model = gltf.scene;
+      activeModel = model;
 
       if (!model.userData.isConfigured) {
         const initialBox = new THREE.Box3().setFromObject(model);
@@ -194,9 +517,144 @@ export function loadSchoolScene(scene, physicsWorld, player) {
       }
       player.setPosition(finalRoomCenter.x, spawnY4, finalRoomCenter.z);
 
+      // Crear partículas Upside Down
+      createUpsideDownParticles(scene, finalRoomCenter, finalRoomSize);
+
+      // --- CARGAR RAÍCES (Upside Down) ---
+      rootsGroup = new THREE.Group();
+      rootsGroup.visible = isUpsideDownActive;
+      scene.add(rootsGroup);
+
+      // Cargar textura viscosa para las raíces
+      if (!rootViscousTexture) {
+        rootViscousTexture = new THREE.TextureLoader(loadingManager).load('/models/Tunel/texture/text_tunel.jpeg');
+        rootViscousTexture.colorSpace = THREE.SRGBColorSpace;
+        rootViscousTexture.wrapS = THREE.RepeatWrapping;
+        rootViscousTexture.wrapT = THREE.RepeatWrapping;
+        rootViscousTexture.repeat.set(1, 3);
+      }
+
+      assetCache.loadGLTF('/models/root.glb', loadingManager).then((rootGltf) => {
+        const baseRoot = rootGltf.scene;
+
+        // Aplicar material viscoso a la raíz base
+        baseRoot.traverse((child) => {
+          if (child.isMesh) {
+            const oldMat = Array.isArray(child.material) ? child.material[0] : child.material;
+            const newMat = oldMat ? oldMat.clone() : new THREE.MeshStandardMaterial();
+
+            newMat.map = rootViscousTexture;
+            newMat.color = new THREE.Color(0xffffff);
+            newMat.emissive = new THREE.Color(0x0a1a3a);
+            newMat.emissiveIntensity = 0.25;
+            newMat.roughness = 0.25;
+            newMat.metalness = 0.0;
+            newMat.side = THREE.DoubleSide;
+            newMat.needsUpdate = true;
+
+            child.material = newMat;
+          }
+        });
+
+        // Calcular escala base para que cada raíz mida aprox 1.5 metros
+        const rootBox = new THREE.Box3().setFromObject(baseRoot);
+        const sizeVec = rootBox.getSize(new THREE.Vector3());
+        const rootSize = Math.max(sizeVec.x, sizeVec.y, sizeVec.z) || 1.0;
+        const baseScale = 1.5 / rootSize;
+
+        // Recolectar solo mallas visibles y estructurales para el raycast
+        const validMeshes = [];
+        model.traverse((child) => {
+          if (child.isMesh && child.visible) {
+            const name = child.name.toLowerCase();
+            if (!name.includes('collider') && !name.includes('box') && !name.includes('glass') && !name.includes('light')) {
+              validMeshes.push(child);
+            }
+          }
+        });
+
+        const raycaster = new THREE.Raycaster();
+        let placed = 0;
+        let attempts = 0;
+        const maxRoots = 80; // Bajamos el límite para que no sature y se mantenga disperso y ordenado
+        const minDistanceBetweenRoots = 1.5; // Mayor separación para una escena más amplia
+        const placedPositions = [];
+
+        // Intentar colocar hasta 80 raíces dispersas
+        while (placed < maxRoots && attempts < 1500) {
+          attempts++;
+          const rx = finalRoomCenter.x + (Math.random() - 0.5) * finalRoomSize.x * 0.95;
+          const ry = finalRoomCenter.y + (Math.random() - 0.5) * finalRoomSize.y * 0.95;
+          const rz = finalRoomCenter.z + (Math.random() - 0.5) * finalRoomSize.z * 0.95;
+
+          const dir = new THREE.Vector3(
+            (Math.random() - 0.5) * 2.0,
+            (Math.random() - 0.5) * 2.0,
+            (Math.random() - 0.5) * 2.0
+          ).normalize();
+
+          raycaster.set(new THREE.Vector3(rx, ry, rz), dir);
+          const hits = raycaster.intersectObjects(validMeshes, false);
+
+          if (hits.length > 0) {
+            const hit = hits[0];
+
+            // Ignorar si pegó en un techo o si la normal apunta muy hacia abajo
+            if (hit.face && hit.face.normal.clone().transformDirection(hit.object.matrixWorld).y < -0.5) continue;
+
+            // Ignorar si pegó en un objeto muy pequeño
+            if (hit.distance < 0.1) continue;
+
+            // Validar distancia mínima contra raíces ya colocadas para asegurar dispersión
+            let tooClose = false;
+            for (const pos of placedPositions) {
+              if (pos.distanceTo(hit.point) < minDistanceBetweenRoots) {
+                tooClose = true;
+                break;
+              }
+            }
+            if (tooClose) continue;
+
+            const clone = baseRoot.clone();
+
+            // Variación de escala (entre 0.4x y 1.2x)
+            clone.scale.setScalar(baseScale * (Math.random() * 0.8 + 0.4));
+
+            // Hundir un poquito la raíz en la pared para que no se vea el corte
+            clone.position.copy(hit.point).add(hit.face.normal.clone().multiplyScalar(-0.1));
+
+            // Alinear el eje Y de la raíz con la normal de la pared/piso
+            const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), hit.face.normal);
+            clone.quaternion.copy(quaternion);
+
+            // Girarla en su propio eje para variedad
+            clone.rotateY(Math.random() * Math.PI * 2);
+
+            // Acostarla un poco aleatoriamente para que "trepe" por la superficie
+            clone.rotateX((Math.random() * 0.6) + 0.2);
+
+            clone.traverse((child) => {
+              if (child.isMesh) {
+                child.castShadow = ENABLE_SHADOWS;
+                child.receiveShadow = ENABLE_SHADOWS;
+              }
+            });
+
+            rootsGroup.add(clone);
+            placedPositions.push(hit.point.clone());
+            placed++;
+          }
+        }
+      }).catch(err => console.error("Error loading roots in Scene4:", err));
+
+      // Reaplicar el estado al final de la carga para restaurar exactamente
+      // la iluminación de la escena 4 una vez que ya existe toda la escena.
+      applyUpsideDownState();
+      logScene4LightingSnapshot('sceneReady');
+
       setMainSceneReady();
       eventBus.emit('sceneReady', { sceneId: 'scene4' });
-      setFloatingHelp('<b>Scene: The Origins (Hawking lab`s school)</b><br><br><b>Controls:</b><br>- Click to enter<br>- WASD to move<br><br><b>Exit:</b><br>- Press ESC to unlock pointer<br>- Type "HELP" to teleport');
+      setFloatingHelp('<b>Scene: The Origins (Hawking lab`s school)</b><br><br><b>Controls:</b><br>- Click to enter<br>- WASD to move<br>- Press "U" for Upside Down Mode<br>- F to toggle flashlight<br><br><b>Exit:</b><br>- Press ESC to unlock pointer<br>- Type "HELP" to teleport');
       setHelpText('');
     }
   ).catch((error) => {
@@ -205,11 +663,72 @@ export function loadSchoolScene(scene, physicsWorld, player) {
   });
 }
 
-export function updateScene4(time) {
-  if (redLight) {
-    redLight.intensity = 1.5 * (0.8 + 0.2 * Math.sin(time * 4.0));
+export function updateScene4(time, player, dt) {
+  // --- Iluminación según estado ---
+  if (isUpsideDownActive) {
+    if (flashAmbient) flashAmbient.intensity = 0.6;
+
+    if (redLight) {
+      redLight.intensity = 1.0 * (0.8 + 0.2 * Math.sin(time * 1.5));
+    }
+    if (orangeLight) {
+      orangeLight.intensity = 0.8 * (0.8 + 0.2 * Math.cos(time * 1.0));
+    }
+
+    // Forzar linterna a ser más tenue
+    if (player && player.flashlight && player.flashlightEnabled) {
+      player.flashlight.intensity = 20.0;
+    }
+  } else {
+    // Estado normal: Luz ambiental apagada, luces de punto con pulso suave
+    if (flashAmbient) flashAmbient.intensity = 0.0;
+
+    if (redLight) {
+      redLight.intensity = 1.5 * (0.8 + 0.2 * Math.sin(time * 4.0));
+    }
+    if (orangeLight) {
+      orangeLight.intensity = 1.5 * (0.8 + 0.2 * Math.cos(time * 3.0));
+    }
+
+    // Restaurar linterna normal
+    if (player && player.flashlight && player.flashlightEnabled) {
+      player.flashlight.intensity = 10.0;
+    }
   }
-  if (orangeLight) {
-    orangeLight.intensity = 1.5 * (0.8 + 0.2 * Math.cos(time * 3.0));
+
+  // --- Animación de partículas Upside Down ---
+  if (upsideDownParticles && upsideDownParticleGeometry && upsideDownParticleMaterial) {
+    const positions = upsideDownParticleGeometry.attributes.position.array;
+
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const posOffset = i * 3;
+      const motionOffset = i * 4;
+      const baseX = upsideDownParticleBasePositions[posOffset];
+      const baseY = upsideDownParticleBasePositions[posOffset + 1];
+      const baseZ = upsideDownParticleBasePositions[posOffset + 2];
+      const phase = upsideDownParticleMotion[motionOffset];
+      const speed = upsideDownParticleMotion[motionOffset + 1];
+      const swayX = upsideDownParticleMotion[motionOffset + 2];
+      const swayY = upsideDownParticleMotion[motionOffset + 3];
+
+      positions[posOffset] = baseX + Math.sin(time * speed + phase) * swayX;
+      positions[posOffset + 1] = baseY + Math.cos(time * speed * 1.15 + phase * 1.7) * swayY;
+      positions[posOffset + 2] = baseZ + Math.sin(time * speed * 0.7 + phase * 0.6) * swayX;
+    }
+
+    upsideDownParticleGeometry.attributes.position.needsUpdate = true;
+
+    const targetOpacity = isUpsideDownActive ? 0.26 : 0.0;
+    upsideDownParticleMaterial.opacity = THREE.MathUtils.lerp(
+      upsideDownParticleMaterial.opacity,
+      targetOpacity,
+      0.08
+    );
+    upsideDownParticles.visible = upsideDownParticleMaterial.opacity > 0.01;
+  }
+
+  // Animar textura de las raíces
+  if (isUpsideDownActive && rootViscousTexture && dt) {
+    rootViscousTexture.offset.y -= dt * 0.15;
   }
 }

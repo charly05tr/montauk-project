@@ -368,6 +368,9 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
           if (hits.length > 0) {
             const hit = hits[0];
             
+            // Ignorar si pegó en un techo
+            if (hit.face && hit.face.normal.clone().transformDirection(hit.object.matrixWorld).y < -0.5) continue;
+            
             // Ignorar si pegó en un objeto muy pequeño
             if(hit.distance < 0.1) continue;
 

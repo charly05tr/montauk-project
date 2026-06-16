@@ -11,6 +11,7 @@ import { eventBus } from '../../utils/eventBus.js';
 export let redLight, orangeLight;
 let flashAmbient = null;
 let isUpsideDownActive = false;
+let sceneManagerInstance = null;
 let listenerAdded = false;
 let activeScene = null;
 let activePlayer = null;
@@ -108,10 +109,59 @@ function createUpsideDownParticles(scene, finalRoomCenter, finalRoomSize) {
   scene.add(upsideDownParticles);
 }
 
-export function loadSchoolScene(scene, physicsWorld, player) {
+export function applyUpsideDownState() {
+  const globalAtmosphere = activeScene ? activeScene.getObjectByName("GlobalAtmosphereLight") : null;
+
+  if (isUpsideDownActive) {
+    // Luz muy potente y vívida en tonos cyan/azul
+    if (redLight) redLight.color.setHex(0x0022ff);
+    if (orangeLight) orangeLight.color.setHex(0x0022ff);
+    if (flashAmbient) flashAmbient.color.setHex(0x0000ff);
+
+    if (globalAtmosphere) {
+      globalAtmosphere.color.setHex(0x001133);
+      globalAtmosphere.groundColor.setHex(0x000000);
+      globalAtmosphere.intensity = 0.1;
+    }
+
+    if (activePlayer && activePlayer.flashlight) {
+      activePlayer.flashlight.color.setHex(0x0033ff);
+    }
+
+    // Añadir niebla fuertemente azulada
+    if (activeScene) {
+      activeScene.background = new THREE.Color(0x01050a);
+      activeScene.fog = new THREE.FogExp2(0x01050a, 0.15);
+    }
+  } else {
+    // Restaurar colores originales
+    if (redLight) redLight.color.setHex(0xff2a12);
+    if (orangeLight) orangeLight.color.setHex(0xff6a18);
+    if (flashAmbient) flashAmbient.color.setHex(0xffffff);
+
+    if (globalAtmosphere) {
+      globalAtmosphere.color.setHex(0x5a7ba3);
+      globalAtmosphere.groundColor.setHex(0x3a4b66);
+      globalAtmosphere.intensity = 3;
+    }
+
+    if (activePlayer && activePlayer.flashlight) {
+      activePlayer.flashlight.color.setHex(0xffffff);
+    }
+
+    // Quitar niebla
+    if (activeScene) {
+      activeScene.background = new THREE.Color(0x050a12);
+      activeScene.fog = new THREE.FogExp2(0x050a12, 0.05);
+    }
+  }
+}
+
+export function loadSchoolScene(scene, physicsWorld, player, sceneManager) {
+  sceneManagerInstance = sceneManager;
   activeScene = scene;
   activePlayer = player;
-  isUpsideDownActive = false;
+  isUpsideDownActive = sceneManager.isUpsideDownActive || false;
 
   // Luces Base (La posición se ajustará matemáticamente después de cargar la sala)
   flashAmbient = new THREE.AmbientLight(0xffffff, 0.0);
@@ -133,55 +183,14 @@ export function loadSchoolScene(scene, physicsWorld, player) {
         if (!activeScene) return;
 
         isUpsideDownActive = !isUpsideDownActive;
-        const globalAtmosphere = activeScene ? activeScene.getObjectByName("GlobalAtmosphereLight") : null;
-
-        if (isUpsideDownActive) {
-          // Luz muy potente y vívida en tonos cyan/azul
-          redLight.color.setHex(0x0022ff);
-          orangeLight.color.setHex(0x0022ff);
-          if (flashAmbient) flashAmbient.color.setHex(0x0000ff);
-
-          if (globalAtmosphere) {
-            globalAtmosphere.color.setHex(0x001133);
-            globalAtmosphere.groundColor.setHex(0x000000);
-            globalAtmosphere.intensity = 0.1;
-          }
-
-          if (activePlayer && activePlayer.flashlight) {
-            activePlayer.flashlight.color.setHex(0x0033ff);
-          }
-
-          // Añadir niebla fuertemente azulada
-          if (activeScene) {
-            activeScene.background = new THREE.Color(0x01050a);
-            activeScene.fog = new THREE.FogExp2(0x01050a, 0.15);
-          }
-        } else {
-          // Restaurar colores originales
-          redLight.color.setHex(0xff2a12);
-          orangeLight.color.setHex(0xff6a18);
-          if (flashAmbient) flashAmbient.color.setHex(0xffffff);
-
-          if (globalAtmosphere) {
-            globalAtmosphere.color.setHex(0x5a7ba3);
-            globalAtmosphere.groundColor.setHex(0x3a4b66);
-            globalAtmosphere.intensity = 3;
-          }
-
-          if (activePlayer && activePlayer.flashlight) {
-            activePlayer.flashlight.color.setHex(0xffffff);
-          }
-
-          // Quitar niebla
-          if (activeScene) {
-            activeScene.background = new THREE.Color(0x050a12);
-            activeScene.fog = new THREE.FogExp2(0x050a12, 0.05);
-          }
-        }
+        if (sceneManagerInstance) sceneManagerInstance.isUpsideDownActive = isUpsideDownActive;
+        applyUpsideDownState();
       }
     });
     listenerAdded = true;
   }
+
+  applyUpsideDownState();
 
   assetCache.loadGLTF('/models/Escuela.glb', loadingManager).then(
     (gltf) => {

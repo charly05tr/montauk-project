@@ -19,6 +19,7 @@ class SceneManager {
         this.activeSceneId = 'scene1';
         this.previousSceneId = null;
         this.isTransitioning = false;
+        this.isUpsideDownActive = false; // Global state for Upside Down
     }
 
     initScene(physicsWorld, player) {
@@ -34,7 +35,7 @@ class SceneManager {
         } else if (this.activeSceneId === 'scene3') {
             loadScene3(this.currentScene, physicsWorld, player, this);
         } else if (this.activeSceneId === 'scene4') {
-            loadScene4(this.currentScene, physicsWorld, player);
+            loadScene4(this.currentScene, physicsWorld, player, this);
         }
 
         this.atmosphere.injectIntoScene(this.currentScene);
@@ -104,7 +105,7 @@ class SceneManager {
         } else if (this.activeSceneId === 'scene3') {
             loadScene3(this.currentScene, physicsWorld, player, this);
         } else if (this.activeSceneId === 'scene4') {
-            loadScene4(this.currentScene, physicsWorld, player);
+            loadScene4(this.currentScene, physicsWorld, player, this);
         }
 
         this.atmosphere.injectIntoScene(this.currentScene);

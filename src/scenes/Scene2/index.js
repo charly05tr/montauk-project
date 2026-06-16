@@ -123,8 +123,56 @@ function createUpsideDownParticles(scene, finalRoomCenter, finalRoomSize) {
   scene.add(upsideDownParticles);
 }
 
+export function applyUpsideDownState() {
+  const globalAtmosphere = activeScene ? activeScene.getObjectByName("GlobalAtmosphereLight") : null;
+
+  if (isUpsideDownActive) {
+    // Luz muy potente y vívida en tonos cyan/azul
+    if (whiteLight1) whiteLight1.color.setHex(0x0022ff);
+    if (whiteLight2) whiteLight2.color.setHex(0x0022ff);
+    if (flashAmbient) flashAmbient.color.setHex(0x0000ff);
+
+    if (globalAtmosphere) {
+      globalAtmosphere.color.setHex(0x001133);
+      globalAtmosphere.groundColor.setHex(0x000000);
+      globalAtmosphere.intensity = 0.1; // Matar la luz global para oscuridad total
+    }
+
+    if (activePlayer && activePlayer.flashlight) {
+      activePlayer.flashlight.color.setHex(0x0033ff); // Linterna puramente azul oscura
+    }
+
+    // Añadir niebla fuertemente azulada
+    if (activeScene) {
+      activeScene.background = new THREE.Color(0x01050a);
+      activeScene.fog = new THREE.FogExp2(0x01050a, 0.15); // Densidad muy alta (pesada)
+    }
+  } else {
+    if (whiteLight1) whiteLight1.color.setHex(0xffffff);
+    if (whiteLight2) whiteLight2.color.setHex(0xffffff);
+    if (flashAmbient) flashAmbient.color.setHex(0xffffff);
+
+    if (globalAtmosphere) {
+      globalAtmosphere.color.setHex(0x5a7ba3);
+      globalAtmosphere.groundColor.setHex(0x3a4b66);
+      globalAtmosphere.intensity = 3;
+    }
+
+    if (activePlayer && activePlayer.flashlight) {
+      activePlayer.flashlight.color.setHex(0xffffff); // Linterna original
+    }
+
+    // Quitar niebla
+    if (activeScene) {
+      activeScene.background = new THREE.Color(0x050a12);
+      activeScene.fog = new THREE.FogExp2(0x050a12, 0.05);
+    }
+  }
+}
+
 export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
   sceneManagerInstance = sceneManager;
+  isUpsideDownActive = sceneManager.isUpsideDownActive || false;
   activePhysicsWorld = physicsWorld;
   activeScene = scene;
   activePlayer = player;
@@ -198,50 +246,8 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
       } else if (key === 'u') {
         // Upside Down Toggle
         isUpsideDownActive = !isUpsideDownActive;
-        const globalAtmosphere = activeScene ? activeScene.getObjectByName("GlobalAtmosphereLight") : null;
-
-        if (isUpsideDownActive) {
-          // Luz muy potente y vívida en tonos cyan/azul
-          whiteLight1.color.setHex(0x0022ff);
-          whiteLight2.color.setHex(0x0022ff);
-          if (flashAmbient) flashAmbient.color.setHex(0x0000ff);
-
-          if (globalAtmosphere) {
-            globalAtmosphere.color.setHex(0x001133);
-            globalAtmosphere.groundColor.setHex(0x000000);
-            globalAtmosphere.intensity = 0.1; // Matar la luz global para oscuridad total
-          }
-
-          if (activePlayer && activePlayer.flashlight) {
-            activePlayer.flashlight.color.setHex(0x0033ff); // Linterna puramente azul oscura
-          }
-
-          // Añadir niebla fuertemente azulada
-          if (activeScene) {
-            activeScene.background = new THREE.Color(0x01050a);
-            activeScene.fog = new THREE.FogExp2(0x01050a, 0.15); // Densidad muy alta (pesada)
-          }
-        } else {
-          whiteLight1.color.setHex(0xffffff);
-          whiteLight2.color.setHex(0xffffff);
-          if (flashAmbient) flashAmbient.color.setHex(0xffffff);
-
-          if (globalAtmosphere) {
-            globalAtmosphere.color.setHex(0x5a7ba3);
-            globalAtmosphere.groundColor.setHex(0x3a4b66);
-            globalAtmosphere.intensity = 3;
-          }
-
-          if (activePlayer && activePlayer.flashlight) {
-            activePlayer.flashlight.color.setHex(0xffffff); // Linterna original
-          }
-
-          // Quitar niebla
-          if (activeScene) {
-            activeScene.background = new THREE.Color(0x050a12);
-            activeScene.fog = new THREE.FogExp2(0x050a12, 0.05);
-          }
-        }
+        if (sceneManagerInstance) sceneManagerInstance.isUpsideDownActive = isUpsideDownActive;
+        applyUpsideDownState();
       }
     });
     listenerAdded = true;
@@ -438,6 +444,8 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
         demogorgonBody.collisionFilterMask = 0;
         physicsWorld.world.addBody(demogorgonBody);
       }).catch(err => console.error("Error loading demogorgon:", err));
+
+      applyUpsideDownState();
 
       setMainSceneReady();
       eventBus.emit('sceneReady', { sceneId: 'scene2' });

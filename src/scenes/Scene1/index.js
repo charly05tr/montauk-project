@@ -420,68 +420,8 @@ function onAlphabetKeyDown(e) {
   if (key === 'u') {
     // Upside Down Toggle
     isUpsideDownActive = !isUpsideDownActive;
-    const globalAtmosphere = activeScene ? activeScene.getObjectByName("GlobalAtmosphereLight") : null;
-
-    if (isUpsideDownActive) {
-      if (redLight) {
-        redLight.color.setHex(0x0033ff);
-        redLight.intensity = 1.0; // Fuerte para bañar la casa de azul
-      }
-      if (orangeLight) {
-        orangeLight.color.setHex(0x0033ff);
-        orangeLight.intensity = 1.0;
-      }
-
-      if (globalAtmosphere) {
-        globalAtmosphere.color.setHex(0x001133);
-        globalAtmosphere.groundColor.setHex(0x000000);
-        globalAtmosphere.intensity = 0.1; // Matar luz global blanca
-      }
-
-      if (blueAmbient) {
-        blueAmbient.intensity = 1.0; // Luz tenue azul garantizada
-      }
-
-      if (activePlayer && activePlayer.flashlight) {
-        activePlayer.flashlight.color.setHex(0x0033ff); // Linterna puramente azul oscura
-      }
-
-      // Añadir niebla fuertemente azulada
-      if (activeScene) {
-        activeScene.background = new THREE.Color(0x02081a);
-        activeScene.fog = new THREE.FogExp2(0x02081a, 0.10); // Densidad moderada-alta
-      }
-
-    } else {
-      if (redLight) {
-        redLight.color.setHex(0xff2a12);
-        redLight.intensity = 0.05;
-      }
-      if (orangeLight) {
-        orangeLight.color.setHex(0xff6a18);
-        orangeLight.intensity = 0.05;
-      }
-
-      if (globalAtmosphere) {
-        globalAtmosphere.color.setHex(0x5a7ba3);
-        globalAtmosphere.groundColor.setHex(0x3a4b66);
-        globalAtmosphere.intensity = 3;
-      }
-
-      if (blueAmbient) {
-        blueAmbient.intensity = 0.0;
-      }
-
-      if (activePlayer && activePlayer.flashlight) {
-        activePlayer.flashlight.color.setHex(0xffffff); // Linterna original
-      }
-
-      // Quitar niebla
-      if (activeScene) {
-        activeScene.background = new THREE.Color(0x050a12);
-        activeScene.fog = new THREE.FogExp2(0x050a12, 0.05);
-      }
-    }
+    if (sceneManagerInstance) sceneManagerInstance.isUpsideDownActive = isUpsideDownActive;
+    applyUpsideDownState();
     return;
   }
 
@@ -560,13 +500,80 @@ function onAlphabetKeyDown(e) {
 // Registrar el listener global (se activa sólo cuando estamos en Scene 1)
 window.addEventListener('keydown', onAlphabetKeyDown);
 
+export function applyUpsideDownState() {
+  const globalAtmosphere = activeScene ? activeScene.getObjectByName("GlobalAtmosphereLight") : null;
+
+  if (isUpsideDownActive) {
+    if (redLight) {
+      redLight.color.setHex(0x0033ff);
+      redLight.intensity = 1.0; // Fuerte para bañar la casa de azul
+    }
+    if (orangeLight) {
+      orangeLight.color.setHex(0x0033ff);
+      orangeLight.intensity = 1.0;
+    }
+
+    if (globalAtmosphere) {
+      globalAtmosphere.color.setHex(0x001133);
+      globalAtmosphere.groundColor.setHex(0x000000);
+      globalAtmosphere.intensity = 0.1; // Matar luz global blanca
+    }
+
+    if (blueAmbient) {
+      blueAmbient.intensity = 1.0; // Luz tenue azul garantizada
+    }
+
+    if (activePlayer && activePlayer.flashlight) {
+      activePlayer.flashlight.color.setHex(0x0033ff); // Linterna puramente azul oscura
+    }
+
+    // Añadir niebla fuertemente azulada
+    if (activeScene) {
+      activeScene.background = new THREE.Color(0x02081a);
+      activeScene.fog = new THREE.FogExp2(0x02081a, 0.10); // Densidad moderada-alta
+    }
+  } else {
+    if (redLight) {
+      redLight.color.setHex(0xff2a12);
+      redLight.intensity = 0.05;
+    }
+    if (orangeLight) {
+      orangeLight.color.setHex(0xff6a18);
+      orangeLight.intensity = 0.05;
+    }
+
+    if (globalAtmosphere) {
+      globalAtmosphere.color.setHex(0x5a7ba3);
+      globalAtmosphere.groundColor.setHex(0x3a4b66);
+      globalAtmosphere.intensity = 3;
+    }
+
+    if (blueAmbient) {
+      blueAmbient.intensity = 0.0;
+    }
+
+    if (activePlayer && activePlayer.flashlight) {
+      activePlayer.flashlight.color.setHex(0xffffff); // Linterna original
+    }
+
+    // Quitar niebla
+    // Configurar fondo oscuro base
+    if (activeScene) {
+      activeScene.background = new THREE.Color(0x050a12);
+      activeScene.fog = new THREE.FogExp2(0x050a12, 0.05);
+    }
+  }
+}
+
 export function loadRoom(scene, physicsWorld, player, sceneManager) {
   sceneManagerInstance = sceneManager;
+  isUpsideDownActive = sceneManager.isUpsideDownActive || false;
+  
+  // Limpiar antes de cargar
+  cleanupAlphabetState();
   activePlayer = player;
   activePhysicsWorld = physicsWorld;
   activeScene = scene;
-  isUpsideDownActive = false;
-  cleanupAlphabetState();
 
   // Registrar listeners de interacción con bombillas
   window.addEventListener('pointerdown', onBulbPointerDown);
@@ -846,6 +853,9 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
       player.setPosition(finalRoomCenter.x, spawnY, finalRoomCenter.z);
 
       createUpsideDownParticles(scene, finalRoomCenter, finalRoomSize);
+
+      // Aplicar el estado global de Upside Down a la escena
+      applyUpsideDownState();
 
       setMainSceneReady();
       eventBus.emit('sceneReady', { sceneId: 'scene1' });

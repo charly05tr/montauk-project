@@ -233,7 +233,9 @@ function collectAndMapBulbs(model) {
   if (bulbParents.length === 0) return;
 
   // 2. Ordenar por altura (Filas)
+  // Primero ordenamos todos los bulbos por su Y descendente (de más alto a más bajo)
   bulbParents.sort((a, b) => b.worldPos.y - a.worldPos.y);
+
   const rows = [];
   let currentRow = [bulbParents[0]];
   const ROW_THRESHOLD = 0.15;
@@ -267,10 +269,9 @@ function collectAndMapBulbs(model) {
     const letterEntry = Object.entries(STRANGER_MAP).find(([key, val]) => val === i);
     const letter = letterEntry ? letterEntry[0] : null;
 
-    // Solo aplicar el offset en la PRIMERA carga del modelo.
-    // En recargas, el sort por Z cambia de orden (el bulb movido sube de índice),
-    // así que i===17 apuntaría a un bulb diferente y lo movería también.
-    if (i === 17 && !model.userData.bulbOffsetDone) {
+    // El bulbo de la letra L en el modelo original está un poco desalineado visualmente,
+    // le aplicamos el ajuste que tenía en el index 17 original.
+    if (letter === 'l' && !model.userData.bulbOffsetDone) {
       const offsetVisualDerecha = 0.15; // 15cm
       const offsetHaciaAbajo = 0.04;   // -1cm
 
@@ -415,12 +416,12 @@ function onAlphabetKeyDown(e) {
   if (e.key.length !== 1) return;
 
   const key = e.key.toLowerCase();
-  
+
   if (key === 'u') {
     // Upside Down Toggle
     isUpsideDownActive = !isUpsideDownActive;
     const globalAtmosphere = activeScene ? activeScene.getObjectByName("GlobalAtmosphereLight") : null;
-    
+
     if (isUpsideDownActive) {
       if (redLight) {
         redLight.color.setHex(0x0033ff);
@@ -430,27 +431,27 @@ function onAlphabetKeyDown(e) {
         orangeLight.color.setHex(0x0033ff);
         orangeLight.intensity = 1.0;
       }
-      
+
       if (globalAtmosphere) {
         globalAtmosphere.color.setHex(0x001133);
         globalAtmosphere.groundColor.setHex(0x000000);
         globalAtmosphere.intensity = 0.1; // Matar luz global blanca
       }
-      
+
       if (blueAmbient) {
         blueAmbient.intensity = 1.0; // Luz tenue azul garantizada
       }
-      
+
       if (activePlayer && activePlayer.flashlight) {
         activePlayer.flashlight.color.setHex(0x0033ff); // Linterna puramente azul oscura
       }
-      
+
       // Añadir niebla fuertemente azulada
       if (activeScene) {
         activeScene.background = new THREE.Color(0x02081a);
         activeScene.fog = new THREE.FogExp2(0x02081a, 0.10); // Densidad moderada-alta
       }
-      
+
     } else {
       if (redLight) {
         redLight.color.setHex(0xff2a12);
@@ -460,21 +461,21 @@ function onAlphabetKeyDown(e) {
         orangeLight.color.setHex(0xff6a18);
         orangeLight.intensity = 0.05;
       }
-      
+
       if (globalAtmosphere) {
         globalAtmosphere.color.setHex(0x5a7ba3);
         globalAtmosphere.groundColor.setHex(0x3a4b66);
         globalAtmosphere.intensity = 3;
       }
-      
+
       if (blueAmbient) {
         blueAmbient.intensity = 0.0;
       }
-      
+
       if (activePlayer && activePlayer.flashlight) {
         activePlayer.flashlight.color.setHex(0xffffff); // Linterna original
       }
-      
+
       // Quitar niebla
       if (activeScene) {
         activeScene.background = new THREE.Color(0x050a12);
@@ -698,7 +699,7 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
           opacity: 0.35
         });
         const sprite = new THREE.Sprite(spriteMaterial);
-        
+
         // CORRECCIÓN MATEMÁTICA: Aislar el eje horizontal dominante (X o Z) para empujar perpendicularmente a la pared.
         // Esto evita que los sprites se desplacen en diagonal o hacia abajo.
         const dirToCenter = new THREE.Vector3().subVectors(finalRoomCenter, entry.worldPos);
@@ -709,10 +710,10 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
         }
         dirToCenter.y = 0;
         dirToCenter.normalize();
-        
+
         sprite.position.copy(entry.worldPos).addScaledVector(dirToCenter, 0.08);
         sprite.scale.set(0.25, 0.25, 1);
-        
+
         scene.add(sprite);
         entry.glowSprite = sprite;
       });
@@ -724,7 +725,7 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
         if (bulb) {
           const color = getBulbNodeColor(bulb.node);
           const pl = new THREE.PointLight(color.clone(), 0.3, 5.0, 1.5);
-          
+
           // Mismo offset perpendicular para los PointLights
           const dirToCenter = new THREE.Vector3().subVectors(finalRoomCenter, bulb.worldPos);
           if (Math.abs(dirToCenter.x) > Math.abs(dirToCenter.z)) {
@@ -734,9 +735,9 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
           }
           dirToCenter.y = 0;
           dirToCenter.normalize();
-          
+
           pl.position.copy(bulb.worldPos).addScaledVector(dirToCenter, 0.15);
-          
+
           scene.add(pl);
           wallPointLights.push(pl);
         }

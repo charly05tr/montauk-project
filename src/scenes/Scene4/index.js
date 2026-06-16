@@ -8,6 +8,7 @@ import { createStaticBox, createBoxFromMesh, createTrimeshFromMesh } from '../..
 import { soundManager } from '../../core/SoundManager.js';
 import { eventBus } from '../../utils/eventBus.js';
 import { getRenderer } from '../../core/Renderer.js';
+import { isGameActive } from '../../core/GameSession.js';
 
 export let redLight, orangeLight;
 let flashAmbient = null;
@@ -327,9 +328,10 @@ export function loadSchoolScene(scene, physicsWorld, player, sceneManager) {
 
   if (!listenerAdded) {
     window.addEventListener('keydown', (e) => {
+      if (!isGameActive()) return;
       const key = e.key.toLowerCase();
+      if (sceneManagerInstance?.activeSceneId !== 'scene4') return;
       if (key === 'u') {
-        // Solo responder si estamos en Scene4
         if (!activeScene) return;
 
         isUpsideDownActive = !isUpsideDownActive;

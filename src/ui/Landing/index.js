@@ -433,6 +433,9 @@ export function initLandingPage(onStartCallback, player) {
     enableOrientationLock();
     soundManager.resumeContext();
 
+    // Iniciar la música de fondo de inmediato al entrar al juego
+    soundManager.playAmbient('room_ambient', '/sounds/scene2.mp3', true, 0.4);
+
     // Aplicar restricciones táctiles para el juego (bloquear scroll, pull-to-refresh, etc.)
     const gameRestrictions = document.createElement('style');
     gameRestrictions.id = 'game-touch-restrictions';

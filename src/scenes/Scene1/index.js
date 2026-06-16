@@ -10,6 +10,7 @@ import { createStaticBox, createBoxFromMesh, createTrimeshFromMesh } from '../..
 import { eventBus } from '../../utils/eventBus.js';
 import { soundManager } from '../../core/SoundManager.js';
 import { startPortalSequence, updatePortalSequence, cleanupPortalSequence, isPortalActive } from './PortalSequence.js';
+import { isGameActive } from '../../core/GameSession.js';
 
 let sceneManagerInstance = null;
 
@@ -417,6 +418,7 @@ function handleBulbTap(clientX, clientY) {
  * Se llama desde el listener de keydown.
  */
 function onAlphabetKeyDown(e) {
+  if (!isGameActive()) return;
   // Solo funcionar cuando estamos en Scene 1 y no en transición
   if (!sceneManagerInstance || sceneManagerInstance.activeSceneId !== 'scene1') return;
   if (helpTriggered) return;
@@ -590,8 +592,8 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
   window.addEventListener('pointerdown', onBulbPointerDown);
   window.addEventListener('pointerup', onBulbPointerUp);
 
-  // Reproducir el sonido ambiente de la escena de inmediato para que suene durante la carga
-  soundManager.playAmbient('room_ambient', '/sounds/scene2.mp3', true, 0.4);
+
+  // La música de fondo ('room_ambient') ya se inicia desde la Landing Page al presionar "Enter Facility"
 
   // Luces Base (La posición se ajustará matemáticamente después de cargar la sala)
   redLight = new THREE.PointLight(0xff2a12, 0.05, 20, 2)

@@ -3,6 +3,7 @@ import * as CANNON from 'cannon-es';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { soundManager } from './SoundManager.js';
 import { isMobile } from '../utils/deviceDetection.js';
+import { isGameActive } from './GameSession.js';
 
 export class Player {
     constructor(scene, physicsWorld) {
@@ -57,6 +58,7 @@ export class Player {
         const isMobileDevice = isMobile();
         if (!isMobileDevice) {
             document.body.addEventListener('click', () => {
+                if (!isGameActive()) return;
                 soundManager.resumeContext();
                 if (!this.controls.isLocked) {
                     console.log('LOCKED');
@@ -66,8 +68,9 @@ export class Player {
         } else {
             // En móvil, reanudar contexto de audio al tocar la pantalla por primera vez
             document.body.addEventListener('touchstart', () => {
+                if (!isGameActive()) return;
                 soundManager.resumeContext();
-            }, { once: true, passive: false });
+            }, { passive: false });
         }
 
         this.keys = { w: false, a: false, s: false, d: false, e: false };
@@ -75,6 +78,7 @@ export class Player {
         this.movementProfile = null;
 
         window.addEventListener('keydown', (e) => {
+            if (!isGameActive()) return;
             const key = e.key.toLowerCase();
             if (this.keys.hasOwnProperty(key)) this.keys[key] = true;
 
@@ -199,6 +203,17 @@ export class Player {
     }
 
     update() {
+        if (!isGameActive()) {
+            this.keys.w = false;
+            this.keys.a = false;
+            this.keys.s = false;
+            this.keys.d = false;
+            this.keys.e = false;
+            this.body.velocity.x = 0;
+            this.body.velocity.z = 0;
+            return;
+        }
+
         this.enforceMovementBounds();
 
         this.body.quaternion.set(0, 0, 0, 1);

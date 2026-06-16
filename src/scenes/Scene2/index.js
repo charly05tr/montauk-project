@@ -9,6 +9,7 @@ import { getMaterialName, tuneHospitalMaterial } from './objects.js';
 import { createStaticBox, createBoxFromMesh, createTrimeshFromMesh } from '../../physics/Collider.js';
 import { soundManager } from '../../core/SoundManager.js';
 import { cameraLight } from '../../core/Lights.js';
+import { isGameActive } from '../../core/GameSession.js';
 
 export let whiteLight1, whiteLight2, flashAmbient;
 export let demogorgonModel, demogorgonMixer, demogorgonBody;
@@ -200,7 +201,9 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
 
   if (!listenerAdded) {
     window.addEventListener('keydown', (e) => {
+      if (!isGameActive()) return;
       const key = e.key.toLowerCase();
+      if (sceneManagerInstance?.activeSceneId !== 'scene2') return;
       if (key === 'l') {
         isFlickeringActive = !isFlickeringActive;
 

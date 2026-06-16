@@ -10,6 +10,7 @@ import { Player } from './core/Player.js'
 import { initMobileControls } from './ui/MobileControls/index.js'
 import { initPauseMenu } from './ui/PauseMenu/index.js'
 import { isMobile } from './utils/deviceDetection.js'
+import { isGameActive, setGameActive } from './core/GameSession.js'
 
 // --- POST-PROCESSING IMPORTS ---
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -87,7 +88,12 @@ initGlobalLights(scene)
 // 7. Atajo de teclado especial para alternar escenas ("HELP")
 let typedBuffer = ''
 const sceneOrder = ['scene1', 'scene2', 'scene3', 'scene4']
+function handleEnterFacility() {
+  setGameActive(true)
+}
+
 window.addEventListener('keydown', (e) => {
+  if (!isGameActive()) return
   if (e.key.length !== 1) return // Ignorar teclas especiales (Shift, Ctrl, etc.)
 
   // No interceptar teclas cuando estamos en Scene 1 (el abecedario las maneja)
@@ -133,11 +139,15 @@ function animate() {
 animate()
 
 // Cargar la Landing Page pasando el objeto jugador para el PointerLock instantáneo
-initLandingPage(null, player);
+setGameActive(false)
+initLandingPage(handleEnterFacility, player);
 
 async function exitToLanding() {
+  setGameActive(false);
+  typedBuffer = '';
   player.flashlightEnabled = false;
   player.flashlight.intensity = 0.0;
+  player.flashlight.color.setHex(0xffffff);
 
   if (player.keys) {
     for (const k in player.keys) {
@@ -148,12 +158,13 @@ async function exitToLanding() {
   soundManager.stopAllAmbient();
   soundManager.stopAllPositional();
 
+  sceneManager.isUpsideDownActive = false;
   sceneManager.activeSceneId = null;
   sceneManager.switchScene('scene1', physicsWorld, player);
 
   setExitButtonVisible(false);
 
-  initLandingPage(null, player);
+  initLandingPage(handleEnterFacility, player);
 }
 
 setExitCallback(exitToLanding);

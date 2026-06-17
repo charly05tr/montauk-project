@@ -136,19 +136,19 @@ export function applyUpsideDownState() {
     if (flashAmbient) flashAmbient.color.setHex(0x0000ff);
 
     if (globalAtmosphere) {
-      globalAtmosphere.color.setHex(0x001133);
+      globalAtmosphere.color.setHex(0x002244);
       globalAtmosphere.groundColor.setHex(0x000000);
-      globalAtmosphere.intensity = 0.1; // Matar la luz global para oscuridad total
+      globalAtmosphere.intensity = 0.8; // Aumentado desde 0.1 para mejor visibilidad
     }
 
     if (activePlayer && activePlayer.flashlight) {
-      activePlayer.flashlight.color.setHex(0x0033ff); // Linterna puramente azul oscura
+      activePlayer.flashlight.color.setHex(0x88aaff); // Linterna azulada más brillante
     }
 
     // Añadir niebla fuertemente azulada
     if (activeScene) {
       activeScene.background = new THREE.Color(0x01050a);
-      activeScene.fog = new THREE.FogExp2(0x01050a, 0.15); // Densidad muy alta (pesada)
+      activeScene.fog = new THREE.FogExp2(0x01050a, 0.05); // Densidad disminuida desde 0.15
     }
   } else {
     if (rootsGroup) rootsGroup.visible = false;

@@ -1,4 +1,4 @@
-import { isMobile } from '../../utils/deviceDetection.js';
+import { isMobile, isIOS } from '../../utils/deviceDetection.js';
 import { enableOrientationLock } from '../../utils/orientationLock.js';
 import { soundManager } from '../../core/SoundManager.js';
 
@@ -471,6 +471,27 @@ export function initLandingPage(onStartCallback, player) {
 
   wrapper.appendChild(title);
   wrapper.appendChild(subtitle);
+
+  if (isIOS() && !window.navigator.standalone) {
+    const iosNotice = document.createElement('div');
+    iosNotice.style.cssText = `
+      color: #ffaa00;
+      font-size: 0.95rem;
+      text-align: center;
+      margin-bottom: 25px;
+      font-family: 'Outfit', sans-serif;
+      text-shadow: 0 0 5px rgba(255, 170, 0, 0.5);
+      border: 1px dashed rgba(255, 170, 0, 0.5);
+      padding: 12px;
+      border-radius: 8px;
+      background: rgba(255, 170, 0, 0.05);
+      max-width: 90%;
+      line-height: 1.4;
+    `;
+    iosNotice.innerHTML = "Para jugar en pantalla completa, toca 'Compartir' y luego 'Agregar a Inicio'";
+    wrapper.appendChild(iosNotice);
+  }
+
   wrapper.appendChild(enterButton);
   wrapper.appendChild(demogorgon);
   wrapper.appendChild(controlsPanel);

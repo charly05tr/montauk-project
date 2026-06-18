@@ -205,6 +205,7 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
       const key = e.key.toLowerCase();
       if (sceneManagerInstance?.activeSceneId !== 'scene2') return;
       if (key === 'l') {
+        if (!demogorgonModel || !demogorgonBody) return;
         isFlickeringActive = !isFlickeringActive;
 
         // Reset and freeze physics based on state
@@ -224,8 +225,8 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
             direction.y = 0;
             if (direction.lengthSq() > 0) direction.normalize();
 
-            const spawnX = player.camera.position.x + direction.x * 8;
-            const spawnZ = player.camera.position.z + direction.z * 8;
+            const spawnX = player.camera.position.x + direction.x * 5;
+            const spawnZ = player.camera.position.z + direction.z * 5;
             // El jugador tiene height = 1.5, floor está aprox a (camera.y - 1.5).
             const floorY = player.camera.position.y - 1.5;
 
@@ -505,14 +506,14 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
         const demoBox = new THREE.Box3().setFromObject(demogorgonModel);
         const rawHeight = demoBox.getSize(new THREE.Vector3()).y;
 
-        // Si el modelo es un SkinnedMesh, el Box3 puede dar 0 o infinito. Fallback a 1.0.
+        // Si el modelo es un SkinnedMesh, el Box3 puede dar 0 o infinito. Fallback a 0.012.
         let scaleFactor = 1.0;
-        if (rawHeight > 0 && isFinite(rawHeight)) {
+        if (rawHeight > 0.1 && rawHeight < 100 && isFinite(rawHeight)) {
           // Queremos que el Demogorgon tenga una altura aproximada de 2.0 m 
           // 2.0 / rawHeight da una escala razonable y ligeramente mayor.
           scaleFactor = 2.0 / rawHeight;
         } else {
-          scaleFactor = 0.01; // Scale típico por si acaso
+          scaleFactor = 0.012; // Scale típico por si acaso
         }
         demogorgonModel.scale.setScalar(scaleFactor);
         // Aplicar un pequeño factor extra para que se vea más imponente
@@ -778,6 +779,7 @@ export function updateScene2(time, player, dt) {
 }
 
 export function toggleDemogorgon(player) {
+  if (!demogorgonModel || !demogorgonBody) return;
   isFlickeringActive = !isFlickeringActive;
 
   if (demogorgonModel) {
@@ -794,8 +796,8 @@ export function toggleDemogorgon(player) {
       direction.y = 0;
       if (direction.lengthSq() > 0) direction.normalize();
 
-      const spawnX = player.camera.position.x + direction.x * 8;
-      const spawnZ = player.camera.position.z + direction.z * 8;
+      const spawnX = player.camera.position.x + direction.x * 5;
+      const spawnZ = player.camera.position.z + direction.z * 5;
       const floorY = player.camera.position.y - 1.5;
 
       demogorgonBody.type = CANNON.Body.DYNAMIC;

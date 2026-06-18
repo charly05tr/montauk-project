@@ -219,10 +219,25 @@ export function initMobileControls(player) {
     </svg>
   `;
 
-  function updateDemogorgonBtn(e) {
+  // Botón Upside Down (Scene 4 - mobile)
+  const upsideDownBtn = document.createElement('div');
+  upsideDownBtn.className = 'mobile-btn';
+  upsideDownBtn.style.display = 'none';
+  upsideDownBtn.innerHTML = `
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="1 4 1 10 7 10"></polyline>
+      <polyline points="23 20 23 14 17 14"></polyline>
+      <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10"></path>
+      <path d="M3.51 15A9 9 0 0 0 18.36 18.36L23 14"></path>
+    </svg>
+  `;
+
+  function updateSceneSpecificBtns(e) {
     const sceneId = e ? e.detail.sceneId : sceneManager.activeSceneId;
     demogorgonBtn.style.display = sceneId === 'scene2' ? 'flex' : 'none';
+    upsideDownBtn.style.display = sceneId === 'scene4' ? 'flex' : 'none';
   }
+
   demogorgonBtn.addEventListener('touchend', (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -235,13 +250,26 @@ export function initMobileControls(player) {
     demogorgonBtn.classList.toggle('active');
   });
 
+  upsideDownBtn.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'u' }));
+    upsideDownBtn.classList.toggle('active');
+  }, { passive: false });
+  upsideDownBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'u' }));
+    upsideDownBtn.classList.toggle('active');
+  });
+
   btnContainer.appendChild(demogorgonBtn);
+  btnContainer.appendChild(upsideDownBtn);
   btnContainer.appendChild(flashlightBtn);
   root.appendChild(btnContainer);
 
-  // Update demogorgon button visibility on scene changes
-  updateDemogorgonBtn();
-  eventBus.on('sceneReady', updateDemogorgonBtn);
+  // Update button visibility on scene changes
+  updateSceneSpecificBtns();
+  eventBus.on('sceneReady', updateSceneSpecificBtns);
 
   document.body.appendChild(root);
 

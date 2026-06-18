@@ -331,6 +331,7 @@ export function setFloatingHelp(htmlContent) {
       .replace(/F to toggle flashlight/gi, 'Flashlight button to toggle light')
       .replace(/Press ESC to unlock pointer/gi, 'Drag screen to look around')
       .replace(/Press "L" to toggle Demogorgon flash/gi, 'Touch anywhere to look')
+      .replace(/Press "U" for Upside Down Mode/gi, 'Upside Down button to toggle')
       .replace(/Type "HELP" to teleport/gi, 'Keypad button to type "HELP"');
   }
 

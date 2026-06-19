@@ -46,7 +46,7 @@ export function tuneSchoolMaterial(material) {
     src.depthWrite = false;
     src.side = THREE.DoubleSide;
     finalMaterial = optimizeMaterial(src);
-  } else if (name.includes('blood') || name.includes('sangre') || name.includes('mancha') || name.includes('stain') || name.includes('decal') || name.includes('hand') || name.includes('mano') || name.includes('huella')) {
+  } else if (name.includes('blood') || name.includes('sangre') || name.includes('mancha') || name.includes('stain') || name.includes('decal') || name.includes('hand') || name.includes('mano') || name.includes('huella') || name.includes('help')) {
     // Forzar transparencia para las manchas de sangre y huellas por si en Blender quedaron como opacas
     src.transparent = true;
     src.alphaTest = 0.1;

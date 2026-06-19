@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { assetCache } from '../../utils/AssetCache.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { loadingManager, setMainSceneReady } from '../../ui/Loading/index.js';
 import { eventBus } from '../../utils/eventBus.js';
 import { setHelpText, setFloatingHelp } from '../../ui/Overlay/index.js';
@@ -225,8 +226,8 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
             direction.y = 0;
             if (direction.lengthSq() > 0) direction.normalize();
 
-            const spawnX = player.camera.position.x + direction.x * 5;
-            const spawnZ = player.camera.position.z + direction.z * 5;
+            const spawnX = player.camera.position.x + direction.x * 2.5;
+            const spawnZ = player.camera.position.z + direction.z * 2.5;
             // El jugador tiene height = 1.5, floor está aprox a (camera.y - 1.5).
             const floorY = player.camera.position.y - 1.5;
 
@@ -500,8 +501,9 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
       createUpsideDownParticles(scene, finalRoomCenter, finalRoomSize);
 
       // --- 7. CARGAR DEMOGORGON CON FÍSICAS ---
-      console.log('[DEMOGORGON] Starting load of demogorgon.glb...');
-      assetCache.loadGLTF('/models/demogorgon.glb', loadingManager).then((demoGltf) => {
+      console.log('[DEMOGORGON] Starting load of demogorgon.glb directly...');
+      const gltfLoader = new GLTFLoader(loadingManager);
+      gltfLoader.load('/models/demogorgon.glb', (demoGltf) => {
         console.log('[DEMOGORGON] Model loaded successfully!', demoGltf);
         demogorgonModel = demoGltf.scene;
 
@@ -543,15 +545,6 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
               m.transparent = false;
               m.depthWrite = true;
               m.side = THREE.DoubleSide;
-              // Color base visible para que no sea negro puro
-              if (!m.map) {
-                m.color = new THREE.Color(0x443333);
-              }
-              // Emisivo fuerte para que brille en la oscuridad del pasillo
-              if (m.emissive !== undefined) {
-                m.emissive = new THREE.Color(0x661111);
-                m.emissiveIntensity = 1.5;
-              }
               m.needsUpdate = true;
               return m;
             });
@@ -583,7 +576,8 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
         demogorgonBody.collisionFilterMask = 0;
         physicsWorld.world.addBody(demogorgonBody);
         console.log('[DEMOGORGON] Physics body created. demogorgonModel:', !!demogorgonModel, 'demogorgonBody:', !!demogorgonBody);
-      }).catch(err => console.error("[DEMOGORGON] Error loading demogorgon:", err));
+
+      }, undefined, (err) => console.error("[DEMOGORGON] Error loading demogorgon:", err));
 
       applyUpsideDownState();
 
@@ -818,8 +812,8 @@ export function toggleDemogorgon(player) {
       direction.y = 0;
       if (direction.lengthSq() > 0) direction.normalize();
 
-      const spawnX = player.camera.position.x + direction.x * 5;
-      const spawnZ = player.camera.position.z + direction.z * 5;
+      const spawnX = player.camera.position.x + direction.x * 2.5;
+      const spawnZ = player.camera.position.z + direction.z * 2.5;
       const floorY = player.camera.position.y - 1.5;
 
       demogorgonBody.type = CANNON.Body.DYNAMIC;

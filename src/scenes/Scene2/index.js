@@ -9,6 +9,7 @@ import { getMaterialName, tuneHospitalMaterial } from './objects.js';
 import { createStaticBox, createBoxFromMesh, createTrimeshFromMesh } from '../../physics/Collider.js';
 import { soundManager } from '../../core/SoundManager.js';
 import { cameraLight } from '../../core/Lights.js';
+import { isGameActive } from '../../core/GameSession.js';
 
 export let whiteLight1, whiteLight2, flashAmbient;
 export let demogorgonModel, demogorgonMixer, demogorgonBody;
@@ -200,8 +201,11 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
 
   if (!listenerAdded) {
     window.addEventListener('keydown', (e) => {
+      if (!isGameActive()) return;
       const key = e.key.toLowerCase();
+      if (sceneManagerInstance?.activeSceneId !== 'scene2') return;
       if (key === 'l') {
+        if (!demogorgonModel || !demogorgonBody) return;
         isFlickeringActive = !isFlickeringActive;
 
         // Reset and freeze physics based on state
@@ -221,8 +225,8 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
             direction.y = 0;
             if (direction.lengthSq() > 0) direction.normalize();
 
-            const spawnX = player.camera.position.x + direction.x * 8;
-            const spawnZ = player.camera.position.z + direction.z * 8;
+            const spawnX = player.camera.position.x + direction.x * 5;
+            const spawnZ = player.camera.position.z + direction.z * 5;
             // El jugador tiene height = 1.5, floor está aprox a (camera.y - 1.5).
             const floorY = player.camera.position.y - 1.5;
 
@@ -307,13 +311,13 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
 
       assetCache.loadGLTF('/models/root.glb', loadingManager).then((rootGltf) => {
         const baseRoot = rootGltf.scene;
-        
+
         // Aplicar material viscoso a la raíz base conservando mapas originales si los hay
         baseRoot.traverse((child) => {
           if (child.isMesh) {
             const oldMat = Array.isArray(child.material) ? child.material[0] : child.material;
             const newMat = oldMat ? oldMat.clone() : new THREE.MeshStandardMaterial();
-            
+
             newMat.map = rootViscousTexture;
             newMat.color = new THREE.Color(0xffffff); // Asegurar que el color base no sea negro
             newMat.emissive = new THREE.Color(0x0a1a3a); // Azul más tenue
@@ -322,7 +326,7 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
             newMat.metalness = 0.0; // Quitamos el efecto metálico
             newMat.side = THREE.DoubleSide;
             newMat.needsUpdate = true;
-            
+
             child.material = newMat;
           }
         });
@@ -355,39 +359,42 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
           const rx = finalRoomCenter.x + (Math.random() - 0.5) * finalRoomSize.x * 0.9;
           const ry = finalRoomCenter.y + (Math.random() - 0.5) * finalRoomSize.y * 0.9;
           const rz = finalRoomCenter.z + (Math.random() - 0.5) * finalRoomSize.z * 0.9;
-          
+
           const dir = new THREE.Vector3(
             (Math.random() - 0.5) * 2.0,
             (Math.random() - 0.5) * 2.0,
             (Math.random() - 0.5) * 2.0
           ).normalize();
-          
+
           raycaster.set(new THREE.Vector3(rx, ry, rz), dir);
           const hits = raycaster.intersectObjects(validMeshes, false);
-          
+
           if (hits.length > 0) {
             const hit = hits[0];
-            
+
+            // Ignorar si pegó en un techo
+            if (hit.face && hit.face.normal.clone().transformDirection(hit.object.matrixWorld).y < -0.5) continue;
+
             // Ignorar si pegó en un objeto muy pequeño
-            if(hit.distance < 0.1) continue;
+            if (hit.distance < 0.1) continue;
 
             const clone = baseRoot.clone();
-            
+
             // Variacion de escala (entre 0.4x y 1.2x para que no sean tan invasivas)
             clone.scale.setScalar(baseScale * (Math.random() * 0.8 + 0.4));
-            
+
             // Hundir un poquito la raíz en la pared para que no se vea el corte
             clone.position.copy(hit.point).add(hit.face.normal.clone().multiplyScalar(-0.1));
 
             // Alinear el eje Y de la raíz con la normal de la pared/piso
             const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), hit.face.normal);
             clone.quaternion.copy(quaternion);
-            
+
             // Girarla en su propio eje para variedad
             clone.rotateY(Math.random() * Math.PI * 2);
-            
+
             // Acostarla un poco aleatoriamente para que "trepe" por la superficie
-            clone.rotateX((Math.random() * 0.6) + 0.2); 
+            clone.rotateX((Math.random() * 0.6) + 0.2);
 
             clone.traverse((child) => {
               if (child.isMesh) {
@@ -493,21 +500,22 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
       createUpsideDownParticles(scene, finalRoomCenter, finalRoomSize);
 
       // --- 7. CARGAR DEMOGORGON CON FÍSICAS ---
+      console.log('[DEMOGORGON] Starting load of demogorgon.glb...');
       assetCache.loadGLTF('/models/demogorgon.glb', loadingManager).then((demoGltf) => {
+        console.log('[DEMOGORGON] Model loaded successfully!', demoGltf);
         demogorgonModel = demoGltf.scene;
 
         const demoBox = new THREE.Box3().setFromObject(demogorgonModel);
         const rawHeight = demoBox.getSize(new THREE.Vector3()).y;
 
-        // Si el modelo es un SkinnedMesh, el Box3 puede dar 0 o infinito. Fallback a 1.0.
+        // El modelo viene en escala muy pequeña (~0.015m). Escalamos a ~2m de alto.
         let scaleFactor = 1.0;
-        if (rawHeight > 0 && isFinite(rawHeight)) {
-          // Queremos que el Demogorgon tenga una altura aproximada de 2.0 m 
-          // 2.0 / rawHeight da una escala razonable y ligeramente mayor.
+        if (rawHeight > 0 && isFinite(rawHeight) && rawHeight < 500) {
           scaleFactor = 2.0 / rawHeight;
         } else {
-          scaleFactor = 0.01; // Scale típico por si acaso
+          scaleFactor = 130; // Fallback equivalente a 2.0 / 0.015
         }
+        console.log('[DEMOGORGON] rawHeight:', rawHeight, 'scaleFactor:', scaleFactor);
         demogorgonModel.scale.setScalar(scaleFactor);
         // Aplicar un pequeño factor extra para que se vea más imponente
         demogorgonModel.scale.multiplyScalar(1.2);
@@ -526,19 +534,34 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
             child.receiveShadow = ENABLE_SHADOWS;
             // EVITAR QUE DESAPAREZCA (Bug común con SkinnedMeshes en Three.js)
             child.frustumCulled = false;
-            if (child.material) {
-              child.material.transparent = false;
-              child.material.depthWrite = true;
-              // Asegurarnos de que el material sea visible aunque las luces sean tenues
-              if (child.material.emissive) {
-                child.material.emissive.setHex(0x222222);
+
+            // Clonar material para evitar referencias compartidas del cache
+            const mats = Array.isArray(child.material) ? child.material : [child.material];
+            const fixedMats = mats.map(mat => {
+              if (!mat) return mat;
+              const m = mat.clone();
+              m.transparent = false;
+              m.depthWrite = true;
+              m.side = THREE.DoubleSide;
+              // Color base visible para que no sea negro puro
+              if (!m.map) {
+                m.color = new THREE.Color(0x443333);
               }
-            }
+              // Emisivo fuerte para que brille en la oscuridad del pasillo
+              if (m.emissive !== undefined) {
+                m.emissive = new THREE.Color(0x661111);
+                m.emissiveIntensity = 1.5;
+              }
+              m.needsUpdate = true;
+              return m;
+            });
+            child.material = fixedMats.length === 1 ? fixedMats[0] : fixedMats;
           }
         });
 
         demogorgonModel.visible = false;
         scene.add(demogorgonModel);
+        console.log('[DEMOGORGON] Model added to scene. Scale:', demogorgonModel.scale.toArray());
 
         if (demoGltf.animations && demoGltf.animations.length > 0) {
           demogorgonMixer = new THREE.AnimationMixer(demogorgonModel);
@@ -559,7 +582,8 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
         demogorgonBody.collisionFilterGroup = 0;
         demogorgonBody.collisionFilterMask = 0;
         physicsWorld.world.addBody(demogorgonBody);
-      }).catch(err => console.error("Error loading demogorgon:", err));
+        console.log('[DEMOGORGON] Physics body created. demogorgonModel:', !!demogorgonModel, 'demogorgonBody:', !!demogorgonBody);
+      }).catch(err => console.error("[DEMOGORGON] Error loading demogorgon:", err));
 
       applyUpsideDownState();
 
@@ -772,7 +796,13 @@ export function updateScene2(time, player, dt) {
 }
 
 export function toggleDemogorgon(player) {
+  console.log('[DEMOGORGON] toggleDemogorgon called. model:', !!demogorgonModel, 'body:', !!demogorgonBody, 'player:', !!player);
+  if (!demogorgonModel || !demogorgonBody) {
+    console.warn('[DEMOGORGON] Model or body not loaded yet, ignoring toggle.');
+    return;
+  }
   isFlickeringActive = !isFlickeringActive;
+  console.log('[DEMOGORGON] isFlickeringActive:', isFlickeringActive);
 
   if (demogorgonModel) {
     demogorgonModel.visible = isFlickeringActive;
@@ -788,8 +818,8 @@ export function toggleDemogorgon(player) {
       direction.y = 0;
       if (direction.lengthSq() > 0) direction.normalize();
 
-      const spawnX = player.camera.position.x + direction.x * 8;
-      const spawnZ = player.camera.position.z + direction.z * 8;
+      const spawnX = player.camera.position.x + direction.x * 5;
+      const spawnZ = player.camera.position.z + direction.z * 5;
       const floorY = player.camera.position.y - 1.5;
 
       demogorgonBody.type = CANNON.Body.DYNAMIC;

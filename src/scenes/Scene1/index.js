@@ -10,6 +10,7 @@ import { createStaticBox, createBoxFromMesh, createTrimeshFromMesh } from '../..
 import { eventBus } from '../../utils/eventBus.js';
 import { soundManager } from '../../core/SoundManager.js';
 import { startPortalSequence, updatePortalSequence, cleanupPortalSequence, isPortalActive } from './PortalSequence.js';
+import { isGameActive } from '../../core/GameSession.js';
 
 let sceneManagerInstance = null;
 
@@ -19,6 +20,8 @@ let activePlayer = null;
 let activePhysicsWorld = null;
 let finalRoomBox = null;
 let blueAmbient = null;
+let rootsGroup = null;
+let rootViscousTexture = null;
 
 let bulbGlowTexture = null;
 const wallPointLights = [];
@@ -208,6 +211,11 @@ function cleanupAlphabetState() {
     if (obj.parent) obj.parent.remove(obj);
   });
   sceneAuxObjects.length = 0;
+
+  if (rootsGroup) {
+    if (rootsGroup.parent) rootsGroup.parent.remove(rootsGroup);
+    rootsGroup = null;
+  }
 
   // Desregistrar listeners de interacción con bombillas
   window.removeEventListener('pointerdown', onBulbPointerDown);
@@ -410,6 +418,7 @@ function handleBulbTap(clientX, clientY) {
  * Se llama desde el listener de keydown.
  */
 function onAlphabetKeyDown(e) {
+  if (!isGameActive()) return;
   // Solo funcionar cuando estamos en Scene 1 y no en transición
   if (!sceneManagerInstance || sceneManagerInstance.activeSceneId !== 'scene1') return;
   if (helpTriggered) return;
@@ -563,6 +572,10 @@ export function applyUpsideDownState() {
       activeScene.fog = new THREE.FogExp2(0x050a12, 0.05);
     }
   }
+
+  if (rootsGroup) {
+    rootsGroup.visible = isUpsideDownActive;
+  }
 }
 
 export function loadRoom(scene, physicsWorld, player, sceneManager) {
@@ -579,8 +592,8 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
   window.addEventListener('pointerdown', onBulbPointerDown);
   window.addEventListener('pointerup', onBulbPointerUp);
 
-  // Reproducir el sonido ambiente de la escena de inmediato para que suene durante la carga
-  soundManager.playAmbient('room_ambient', '/sounds/scene2.mp3', true, 0.4);
+
+  // La música de fondo ('room_ambient') ya se inicia desde la Landing Page al presionar "Enter Facility"
 
   // Luces Base (La posición se ajustará matemáticamente después de cargar la sala)
   redLight = new THREE.PointLight(0xff2a12, 0.05, 20, 2)
@@ -854,12 +867,126 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
 
       createUpsideDownParticles(scene, finalRoomCenter, finalRoomSize);
 
+      // Cargar raíces del Upside Down
+      rootsGroup = new THREE.Group();
+      rootsGroup.visible = isUpsideDownActive;
+      scene.add(rootsGroup);
+
+      if (!rootViscousTexture) {
+        rootViscousTexture = new THREE.TextureLoader(loadingManager).load('/models/Tunel/texture/text_tunel.jpeg');
+        rootViscousTexture.colorSpace = THREE.SRGBColorSpace;
+        rootViscousTexture.wrapS = THREE.RepeatWrapping;
+        rootViscousTexture.wrapT = THREE.RepeatWrapping;
+        rootViscousTexture.repeat.set(1, 3);
+      }
+
+      assetCache.loadGLTF('/models/root.glb', loadingManager).then((rootGltf) => {
+        const baseRoot = rootGltf.scene;
+        
+        baseRoot.traverse((child) => {
+          if (child.isMesh) {
+            const oldMat = Array.isArray(child.material) ? child.material[0] : child.material;
+            const newMat = oldMat ? oldMat.clone() : new THREE.MeshStandardMaterial();
+            
+            newMat.map = rootViscousTexture;
+            newMat.color = new THREE.Color(0xffffff);
+            newMat.emissive = new THREE.Color(0x0a1a3a);
+            newMat.emissiveIntensity = 0.25;
+            newMat.roughness = 0.25;
+            newMat.metalness = 0.0;
+            newMat.side = THREE.DoubleSide;
+            newMat.needsUpdate = true;
+            
+            child.material = newMat;
+            child.castShadow = ENABLE_SHADOWS;
+            child.receiveShadow = ENABLE_SHADOWS;
+          }
+        });
+
+        const rootBox = new THREE.Box3().setFromObject(baseRoot);
+        const sizeVec = rootBox.getSize(new THREE.Vector3());
+        const rootSize = Math.max(sizeVec.x, sizeVec.y, sizeVec.z) || 1.0;
+        const baseScale = 1.2 / rootSize; // un poco más pequeñas para el cuarto
+
+        const validMeshes = [];
+        model.traverse((child) => {
+          if (child.isMesh && child.visible) {
+            const name = child.name.toLowerCase();
+            if (!name.includes('collider') && !name.includes('box') && !name.includes('glass') && !name.includes('light')) {
+              validMeshes.push(child);
+            }
+          }
+        });
+
+        const raycaster = new THREE.Raycaster();
+        let placed = 0;
+        let attempts = 0;
+        const maxRoots = 80;
+        const minDistanceBetweenRoots = 1.0; // Distancia mínima en metros para evitar amontonamiento
+        const placedPositions = [];
+
+        while (placed < maxRoots && attempts < 1500) {
+          attempts++;
+          const rx = finalRoomCenter.x + (Math.random() - 0.5) * finalRoomSize.x * 0.95;
+          const ry = finalRoomCenter.y + (Math.random() - 0.5) * finalRoomSize.y * 0.95;
+          const rz = finalRoomCenter.z + (Math.random() - 0.5) * finalRoomSize.z * 0.95;
+
+          const dir = new THREE.Vector3(
+            (Math.random() - 0.5) * 2.0,
+            (Math.random() - 0.5) * 2.0,
+            (Math.random() - 0.5) * 2.0
+          ).normalize();
+
+          raycaster.set(new THREE.Vector3(rx, ry, rz), dir);
+          const hits = raycaster.intersectObjects(validMeshes, true);
+
+          if (hits.length > 0) {
+            const hit = hits[0];
+
+            if (hit.face) {
+              const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+
+              // Si la normal apunta hacia abajo (es un techo), ignoramos y probamos de nuevo
+              if (normal.y < -0.5) continue;
+
+              // Validar distancia mínima contra raíces ya colocadas para asegurar dispersión
+              let tooClose = false;
+              for (const pos of placedPositions) {
+                if (pos.distanceTo(hit.point) < minDistanceBetweenRoots) {
+                  tooClose = true;
+                  break;
+                }
+              }
+              if (tooClose) continue;
+
+              const rootClone = baseRoot.clone();
+
+              const scaleVariation = Math.random() * 0.8 + 0.5;
+              rootClone.scale.setScalar(baseScale * scaleVariation);
+              rootClone.position.copy(hit.point);
+
+              if (normal.y > 0.8) {
+                rootClone.rotation.y = Math.random() * Math.PI * 2;
+              } else {
+                const target = new THREE.Vector3().copy(hit.point).add(normal);
+                rootClone.lookAt(target);
+                rootClone.rotateX(Math.PI / 2);
+                rootClone.rotateY(Math.random() * Math.PI * 2);
+              }
+              rootsGroup.add(rootClone);
+              placedPositions.push(hit.point.clone());
+              placed++;
+            }
+          }
+        }
+      });
+
       // Aplicar el estado global de Upside Down a la escena
       applyUpsideDownState();
 
       setMainSceneReady();
       eventBus.emit('sceneReady', { sceneId: 'scene1' });
-      setFloatingHelp('<b>Scene 1: The Anomaly</b><br><br><b>Controls:</b><br>- Click to enter<br>- WASD to move<br><br><b>Hints:</b><br>- Press ESC to unlock pointer<br>- The alphabet wall is waiting. Spell the word that describes what you need to escape...?');
+      setFloatingHelp('<b>Scene 1: The Anomaly</b><br><br><b>Controls:</b><br>- Click to enter<br>- WASD to move<br><br>- Press "U" for Upside Down Mode<br><br><b>Hints:</b><br>- Press ESC to unlock pointer<br>- The alphabet wall is waiting. Spell the word that describes what you need to escape...?');
       setHelpText('');
     }
   ).catch((error) => {
@@ -984,5 +1111,9 @@ export function updateScene1(time, player, dt) {
       0.05
     );
     upsideDownParticles.visible = upsideDownParticleMaterial.opacity > 0.01;
+  }
+
+  if (isUpsideDownActive && rootViscousTexture && dt) {
+    rootViscousTexture.offset.y -= dt * 0.15;
   }
 }

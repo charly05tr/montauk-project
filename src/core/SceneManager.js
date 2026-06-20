@@ -11,6 +11,7 @@ import { soundManager } from './SoundManager.js';
 import { eventBus } from '../utils/eventBus.js';
 import { getRenderer } from './Renderer.js';
 import { assetCache } from '../utils/AssetCache.js';
+import { isMobile } from '../utils/deviceDetection.js';
 
 // Assets pesados por escena. Se usa para liberar VRAM/RAM de la escena que
 // abandonamos (sin tocar los que la escena destino también necesita).
@@ -65,6 +66,8 @@ class SceneManager {
      * para solo poblar el cache sin clonar (el clon real se hace al entrar).
      */
     preloadNextScene() {
+        // Solo en móvil: en PC se precarga todo al inicio (preloadAllAssets).
+        if (!isMobile()) return;
         const urls = this.getPredictedNextAssets();
         if (!urls) return;
         for (const url of urls) {
@@ -239,6 +242,38 @@ class SceneManager {
         console.log(`[SceneManager] Precargando assets de la escena inicial...`);
         await assetCache.loadGLTF('/models/stranger_things_room/scene.gltf', loadingManager);
         console.log(`[SceneManager] Precarga inicial completada.`);
+    }
+
+    /**
+     * Precarga TODOS los assets de las 4 escenas al inicio (estrategia de PC).
+     * Ahora es viable porque los modelos pesados están comprimidos con Draco.
+     * En móvil NO se usa esto: ver preloadInitialAssets + precarga predictiva.
+     *
+     * @param {THREE.LoadingManager} loadingManager - Manejador de carga de la UI.
+     * @returns {Promise<void>}
+     */
+    async preloadAllAssets(loadingManager) {
+        console.log(`[SceneManager] Precargando TODOS los assets (PC)...`);
+
+        // URLs únicas de todas las escenas
+        const urls = new Set();
+        for (const list of Object.values(SCENE_HEAVY_ASSETS)) {
+            for (const url of list) urls.add(url);
+        }
+
+        // clone:false solo calienta el cache (el clon real se hace al entrar a la escena)
+        const tasks = [...urls].map((url) =>
+            assetCache.loadGLTF(url, loadingManager, { clone: false })
+        );
+
+        // Textura compartida del túnel
+        tasks.push(new Promise((resolve) => {
+            const loader = new THREE.TextureLoader(loadingManager);
+            loader.load('/models/Tunel/texture/text_tunel.jpeg', resolve, undefined, resolve);
+        }));
+
+        await Promise.all(tasks);
+        console.log(`[SceneManager] Precarga completa (PC) terminada.`);
     }
 }
 

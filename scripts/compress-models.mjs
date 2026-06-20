@@ -12,7 +12,7 @@
 // Reemplaza los .glb en public/models/ in-place. Los originales quedan en el
 // historial de Git LFS (git checkout <archivo> para restaurar).
 
-import { NodeIO } from '@gltf-transform/core';
+import { NodeIO, Root } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { weld, dedup, prune, draco } from '@gltf-transform/functions';
 import draco3d from 'draco3dgltf';
@@ -47,13 +47,25 @@ async function compress(file, keepAnims) {
     let removed = 0;
     for (const anim of root.listAnimations()) {
       const name = (anim.getName() || '').toLowerCase();
-      if (!keepAnims.some((k) => name.includes(k))) {
+      const stay = keepAnims.some((k) => name.includes(k))
+        && !name.includes('trans') && !name.includes('fall');
+      if (!stay) {
+        // Disponer explícitamente samplers y canales: dispose() de la animación
+        // por sí solo NO libera sus accesores (quedan huérfanos y prune no los quita).
+        anim.listSamplers().forEach((s) => s.dispose());
+        anim.listChannels().forEach((c) => c.dispose());
         anim.dispose();
         removed++;
       }
     }
+    // Disponer accesores huérfanos (los de las animaciones eliminadas: ~63k en el demogorgon).
+    let orphans = 0;
+    for (const acc of root.listAccessors()) {
+      const parents = acc.listParents().filter((p) => !(p instanceof Root));
+      if (parents.length === 0) { acc.dispose(); orphans++; }
+    }
     const kept = root.listAnimations().map((a) => a.getName());
-    console.log(`  animaciones: eliminadas ${removed}, conservadas [${kept.join(', ')}]`);
+    console.log(`  animaciones: eliminadas ${removed}, accesores liberados ${orphans}, conservadas [${kept.join(', ')}]`);
   }
 
   await doc.transform(
@@ -68,9 +80,16 @@ async function compress(file, keepAnims) {
   console.log(`  ${file}: ${mb(before)} -> ${mb(after)}\n`);
 }
 
-console.log('Comprimiendo modelos pesados (hospital + raíces)...\n');
+// Permite procesar solo algunos modelos:  node scripts/compress-models.mjs demogorgon
+const only = process.argv.slice(2);
+const want = (file) => only.length === 0 || only.some((a) => file.toLowerCase().includes(a.toLowerCase()));
 
-await compress('Velez_Paiz.glb'); // hospital: ~118MB -> ~20MB
-await compress('root.glb');       // raíces:  ~5MB  -> ~0.6MB
+console.log('Comprimiendo modelos pesados...\n');
+
+if (want('Velez_Paiz')) await compress('Velez_Paiz.glb'); // hospital: ~118MB -> ~20MB
+if (want('root')) await compress('root.glb');              // raíces:  ~5MB  -> ~0.6MB
+// Demogorgon: 87MB. El peso son sus 92 animaciones (~60MB); solo usamos 2.
+// Conservamos WalkHuntFT (aparición) y RunEndgame (persecución) -> ~13MB.
+if (want('demogorgon')) await compress('demogorgon.glb', ['walkhuntft', 'runendgame']);
 
 console.log('Listo.');

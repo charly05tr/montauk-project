@@ -31,9 +31,15 @@ const app = document.querySelector('#app')
 initOverlay()
 initLoadingScreen()
 
-// Precargar solo los assets de la escena inicial; el resto se carga bajo demanda
-// en cada transición para no saturar la memoria (evita el crash por OOM en móvil).
-sceneManager.preloadInitialAssets(loadingManager);
+// Estrategia de precarga según el dispositivo:
+// - PC: carga TODO al inicio (transiciones siempre instantáneas).
+// - Móvil: solo la escena inicial; el resto se precarga de forma predictiva en cada
+//   transición para no saturar la memoria (evita el crash por OOM).
+if (isMobile()) {
+  sceneManager.preloadInitialAssets(loadingManager);
+} else {
+  sceneManager.preloadAllAssets(loadingManager);
+}
 
 // 2. Físicas
 const physicsWorld = new PhysicsWorld()

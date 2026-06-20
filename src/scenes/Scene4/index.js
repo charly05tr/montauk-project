@@ -353,8 +353,8 @@ export function loadSchoolScene(scene, physicsWorld, player, sceneManager) {
         const initialBox = new THREE.Box3().setFromObject(model);
         const rawHeight = initialBox.getSize(new THREE.Vector3()).y || 1;
 
-        // Forzamos que la altura de la escuela sea ~5.2 metros
-        const targetHeight = 5.2;
+        // Forzamos que la altura de la escuela sea ~7.5 metros
+        const targetHeight = 7.5;
         const scaleFactor = targetHeight / rawHeight;
         model.scale.setScalar(scaleFactor);
 

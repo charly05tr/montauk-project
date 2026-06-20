@@ -11,6 +11,8 @@ import { createStaticBox, createBoxFromMesh, createTrimeshFromMesh } from '../..
 import { soundManager } from '../../core/SoundManager.js';
 import { cameraLight } from '../../core/Lights.js';
 import { isGameActive } from '../../core/GameSession.js';
+import { isMobile } from '../../utils/deviceDetection.js';
+import { getRenderer } from '../../core/Renderer.js';
 
 export let whiteLight1, whiteLight2, flashAmbient;
 export let demogorgonModel, demogorgonMixer, demogorgonBody;
@@ -30,7 +32,10 @@ let upsideDownParticleMaterial = null;
 let upsideDownParticleTexture = null;
 let upsideDownParticleBasePositions = null;
 let upsideDownParticleMotion = null;
-const PARTICLE_COUNT = 1500;
+// En dispositivos móviles / poca memoria reducimos drásticamente la carga de la GPU
+// (menos overdraw de partículas con blending aditivo y menos re-subidas de buffer).
+const IS_LOW_MEMORY_DEVICE = isMobile();
+const PARTICLE_COUNT = IS_LOW_MEMORY_DEVICE ? 450 : 1500;
 
 let sceneManagerInstance = null;
 
@@ -354,8 +359,9 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
         let placed = 0;
         let attempts = 0;
 
-        // Intentar colocar hasta 150 raices pequeñas
-        while (placed < 150 && attempts < 600) {
+        // Intentar colocar raices pequeñas (menos clones en equipos de poca memoria)
+        const MAX_ROOTS = IS_LOW_MEMORY_DEVICE ? 60 : 150;
+        while (placed < MAX_ROOTS && attempts < MAX_ROOTS * 4) {
           attempts++;
           const rx = finalRoomCenter.x + (Math.random() - 0.5) * finalRoomSize.x * 0.9;
           const ry = finalRoomCenter.y + (Math.random() - 0.5) * finalRoomSize.y * 0.9;
@@ -407,6 +413,18 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
             rootsGroup.add(clone);
             placed++;
           }
+        }
+
+        // Precompilar los shaders de las raíces AHORA (al cargar la escena), no en la
+        // primera pulsación de "U". Las raíces se cargan de forma asíncrona después de
+        // que SceneManager precompila la escena, por lo que sin esto Three.js compila
+        // ~150 mallas en el frame de activación y la imagen se congela ("se pega").
+        const renderer = getRenderer();
+        if (renderer && activeScene && activePlayer?.camera) {
+          const prevVisible = rootsGroup.visible;
+          rootsGroup.visible = true; // compile() solo prepara objetos alcanzables/visibles
+          renderer.compile(activeScene, activePlayer.camera);
+          rootsGroup.visible = prevVisible;
         }
       }).catch(err => console.error("Error loading roots:", err));
 
@@ -754,33 +772,42 @@ export function updateScene2(time, player, dt) {
 
   // Animación de partículas Upside Down
   if (upsideDownParticles && upsideDownParticleGeometry && upsideDownParticleMaterial) {
-    const positions = upsideDownParticleGeometry.attributes.position.array;
-
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      const posOffset = i * 3;
-      const motionOffset = i * 4;
-      const baseX = upsideDownParticleBasePositions[posOffset];
-      const baseY = upsideDownParticleBasePositions[posOffset + 1];
-      const baseZ = upsideDownParticleBasePositions[posOffset + 2];
-      const phase = upsideDownParticleMotion[motionOffset];
-      const speed = upsideDownParticleMotion[motionOffset + 1];
-      const swayX = upsideDownParticleMotion[motionOffset + 2];
-      const swayY = upsideDownParticleMotion[motionOffset + 3];
-
-      positions[posOffset] = baseX + Math.sin(time * speed + phase) * swayX;
-      positions[posOffset + 1] = baseY + Math.cos(time * speed * 1.15 + phase * 1.7) * swayY;
-      positions[posOffset + 2] = baseZ + Math.sin(time * speed * 0.7 + phase * 0.6) * swayX;
-    }
-
-    upsideDownParticleGeometry.attributes.position.needsUpdate = true;
-
+    // El fundido (lerp) es barato: lo actualizamos siempre para que la transición
+    // de entrada/salida sea suave.
     const targetOpacity = isUpsideDownActive ? 0.6 : 0.0;
     upsideDownParticleMaterial.opacity = THREE.MathUtils.lerp(
       upsideDownParticleMaterial.opacity,
       targetOpacity,
       0.05
     );
-    upsideDownParticles.visible = upsideDownParticleMaterial.opacity > 0.01;
+    const particlesVisible = upsideDownParticleMaterial.opacity > 0.01;
+    upsideDownParticles.visible = particlesVisible;
+
+    // Solo recalcular posiciones y re-subir el buffer a la GPU mientras las partículas
+    // son visibles. En modo normal esto evita ~9000 operaciones trigonométricas y una
+    // re-subida completa del buffer en CADA frame (principal causa de tirones y de la
+    // pérdida de contexto WebGL en móviles).
+    if (particlesVisible) {
+      const positions = upsideDownParticleGeometry.attributes.position.array;
+
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const posOffset = i * 3;
+        const motionOffset = i * 4;
+        const baseX = upsideDownParticleBasePositions[posOffset];
+        const baseY = upsideDownParticleBasePositions[posOffset + 1];
+        const baseZ = upsideDownParticleBasePositions[posOffset + 2];
+        const phase = upsideDownParticleMotion[motionOffset];
+        const speed = upsideDownParticleMotion[motionOffset + 1];
+        const swayX = upsideDownParticleMotion[motionOffset + 2];
+        const swayY = upsideDownParticleMotion[motionOffset + 3];
+
+        positions[posOffset] = baseX + Math.sin(time * speed + phase) * swayX;
+        positions[posOffset + 1] = baseY + Math.cos(time * speed * 1.15 + phase * 1.7) * swayY;
+        positions[posOffset + 2] = baseZ + Math.sin(time * speed * 0.7 + phase * 0.6) * swayX;
+      }
+
+      upsideDownParticleGeometry.attributes.position.needsUpdate = true;
+    }
   }
 
   // Animar textura de las raíces

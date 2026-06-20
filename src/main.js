@@ -31,8 +31,9 @@ const app = document.querySelector('#app')
 initOverlay()
 initLoadingScreen()
 
-// Empezar a precargar absolutamente todos los modelos al iniciar
-sceneManager.preloadAllAssets(loadingManager);
+// Precargar solo los assets de la escena inicial; el resto se carga bajo demanda
+// en cada transición para no saturar la memoria (evita el crash por OOM en móvil).
+sceneManager.preloadInitialAssets(loadingManager);
 
 // 2. Físicas
 const physicsWorld = new PhysicsWorld()

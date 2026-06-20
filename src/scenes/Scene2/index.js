@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { assetCache } from '../../utils/AssetCache.js';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { loadingManager, setMainSceneReady } from '../../ui/Loading/index.js';
 import { eventBus } from '../../utils/eventBus.js';
 import { setHelpText, setFloatingHelp } from '../../ui/Overlay/index.js';
@@ -16,10 +15,20 @@ import { getRenderer } from '../../core/Renderer.js';
 
 export let whiteLight1, whiteLight2, flashAmbient;
 export let demogorgonModel, demogorgonMixer, demogorgonBody;
+let demogorgonScareAction = null; // gesto amenazante, se reproduce 1 vez al aparecer
+let demogorgonWalkAction = null;  // locomoción en bucle durante la persecución
 let isFlickeringActive = false; // Reset flicker state on each scene load
 let isUpsideDownActive = false; // Upside down toggle (U/T)
 let listenerAdded = false;
 let demogorgonSpawnPos = new THREE.Vector3();
+// Temporales reutilizables para el Demogorgon (evita asignar objetos cada frame)
+const _demoDir = new THREE.Vector3();
+const _demoLookTarget = new THREE.Vector3();
+const _demoQuat = new THREE.Quaternion();
+const _demoMat = new THREE.Matrix4();
+// El "frente" del modelo está rotado 180° respecto a lo que asume lookAt (-Z),
+// por eso aparecía de espaldas. Corregimos con un giro extra de 180° en Y.
+const _demoYawFlip = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
 let activeScene = null;
 let activePlayer = null;
 export let rootsGroup = null;
@@ -181,6 +190,63 @@ export function applyUpsideDownState() {
   }
 }
 
+/**
+ * Hace aparecer al Demogorgon frente al jugador y lo deja listo para perseguir.
+ * Se invoca tanto desde la tecla "L" (PC) como desde el botón móvil.
+ */
+function spawnDemogorgon(player) {
+  if (!demogorgonModel || !demogorgonBody || !player?.camera) return;
+
+  // Dirección horizontal hacia donde mira el jugador
+  _demoDir.set(0, 0, -1).applyQuaternion(player.camera.quaternion);
+  _demoDir.y = 0;
+  if (_demoDir.lengthSq() > 0) _demoDir.normalize();
+
+  // Aparece a ~5m al frente: lo bastante cerca para asustar, pero lo bastante
+  // lejos para que se vea su silueta completa antes de lanzarse contra el jugador.
+  const spawnX = player.camera.position.x + _demoDir.x * 5.0;
+  const spawnZ = player.camera.position.z + _demoDir.z * 5.0;
+  const floorY = player.camera.position.y - 1.5;
+
+  // Cuerpo KINEMÁTICO directamente (la persecución lo controla en updateScene2);
+  // así no cae un frame por gravedad al cambiar de tipo, ni se atasca en paredes.
+  demogorgonBody.type = CANNON.Body.KINEMATIC;
+  demogorgonBody.collisionFilterGroup = 1;
+  demogorgonBody.collisionFilterMask = 1; // solo colisiona con el suelo
+  demogorgonBody.position.set(spawnX, floorY + 0.6, spawnZ);
+  demogorgonBody.velocity.set(0, 0, 0);
+  demogorgonBody.updateMassProperties();
+  demogorgonBody.wakeUp();
+
+  // Posicionar y orientar el modelo YA (mirando al jugador) para que la aparición
+  // sea limpia y no parpadee un frame en su posición anterior.
+  demogorgonModel.position.set(spawnX, floorY, spawnZ);
+  _demoLookTarget.set(player.camera.position.x, demogorgonModel.position.y, player.camera.position.z);
+  demogorgonModel.lookAt(_demoLookTarget);
+  demogorgonModel.rotateY(Math.PI); // corregir el frente del modelo
+  demogorgonModel.visible = true;
+
+  // Reproducir el gesto amenazante UNA sola vez al aparecer; al terminar, el listener
+  // 'finished' del mixer encadena a la locomoción en bucle (ver carga del modelo).
+  if (demogorgonMixer && demogorgonScareAction && demogorgonWalkAction) {
+    demogorgonWalkAction.stop();
+    demogorgonScareAction.reset();
+    demogorgonScareAction.play();
+  }
+}
+
+/** Oculta y congela al Demogorgon (sin colisiones). */
+function hideDemogorgon() {
+  if (demogorgonBody) {
+    demogorgonBody.type = CANNON.Body.KINEMATIC;
+    demogorgonBody.collisionFilterGroup = 0;
+    demogorgonBody.collisionFilterMask = 0;
+    demogorgonBody.velocity.set(0, 0, 0);
+    demogorgonBody.sleep();
+  }
+  if (demogorgonModel) demogorgonModel.visible = false;
+}
+
 export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
   sceneManagerInstance = sceneManager;
   isUpsideDownActive = sceneManager.isUpsideDownActive || false;
@@ -214,49 +280,13 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
         if (!demogorgonModel || !demogorgonBody) return;
         isFlickeringActive = !isFlickeringActive;
 
-        // Reset and freeze physics based on state
-        if (demogorgonModel) {
-          demogorgonModel.visible = isFlickeringActive;
-        }
-        // Ensure ambient flash light matches state
+        // Luz ambiental de apoyo según el estado
         if (flashAmbient) {
-          flashAmbient.intensity = isFlickeringActive ? 0.5 : 0.0; // example intensity when active
+          flashAmbient.intensity = isFlickeringActive ? 0.5 : 0.0;
         }
 
-        if (demogorgonBody) {
-          if (isFlickeringActive) {
-            // Invocar exactamente a 8 metros en frente del jugador
-            const direction = new THREE.Vector3(0, 0, -1);
-            direction.applyQuaternion(player.camera.quaternion);
-            direction.y = 0;
-            if (direction.lengthSq() > 0) direction.normalize();
-
-            const spawnX = player.camera.position.x + direction.x * 2.5;
-            const spawnZ = player.camera.position.z + direction.z * 2.5;
-            // El jugador tiene height = 1.5, floor está aprox a (camera.y - 1.5).
-            const floorY = player.camera.position.y - 1.5;
-
-            // Activar cuerpo dinámico y habilitar colisiones con el mundo
-            demogorgonBody.type = CANNON.Body.DYNAMIC;
-            demogorgonBody.collisionFilterGroup = 1; // grupo por defecto
-            demogorgonBody.collisionFilterMask = -1; // colisiona con todo
-            demogorgonBody.position.set(spawnX, floorY + 0.6, spawnZ);
-            demogorgonBody.velocity.set(0, 0, 0);
-            // Necesario actualizar masa y despertar después del cambio de tipo
-            demogorgonBody.updateMassProperties();
-            demogorgonBody.wakeUp();
-          } else {
-            // Desactivar cuando se oculta: kinematic y sin colisiones
-            demogorgonBody.type = CANNON.Body.KINEMATIC;
-            demogorgonBody.collisionFilterGroup = 0;
-            demogorgonBody.collisionFilterMask = 0;
-            demogorgonBody.velocity.set(0, 0, 0);
-            demogorgonBody.sleep(); // Congelar cuerpo
-            if (demogorgonModel) {
-              demogorgonModel.visible = false;
-            }
-          }
-        }
+        if (isFlickeringActive) spawnDemogorgon(player);
+        else hideDemogorgon();
       } else if (key === 'u') {
         // Upside Down Toggle
         isUpsideDownActive = !isUpsideDownActive;
@@ -519,9 +549,11 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
       createUpsideDownParticles(scene, finalRoomCenter, finalRoomSize);
 
       // --- 7. CARGAR DEMOGORGON CON FÍSICAS ---
-      console.log('[DEMOGORGON] Starting load of demogorgon.glb directly...');
-      const gltfLoader = new GLTFLoader(loadingManager);
-      gltfLoader.load('/models/demogorgon.glb', (demoGltf) => {
+      // Cargar vía assetCache (una sola copia en memoria), pero SIN clonar: solo hay
+      // una instancia del Demogorgon y SkeletonUtils.clone rompe el skinning de este
+      // rig (la malla quedaba invisible). clone:false usa el GLTF original intacto.
+      console.log('[DEMOGORGON] Starting load of demogorgon.glb from cache (no-clone)...');
+      assetCache.loadGLTF('/models/demogorgon.glb', loadingManager, { clone: false }).then((demoGltf) => {
         console.log('[DEMOGORGON] Model loaded successfully!', demoGltf);
         demogorgonModel = demoGltf.scene;
 
@@ -576,8 +608,42 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
 
         if (demoGltf.animations && demoGltf.animations.length > 0) {
           demogorgonMixer = new THREE.AnimationMixer(demogorgonModel);
-          const action = demogorgonMixer.clipAction(demoGltf.animations[0]);
-          action.play();
+
+          // El modelo trae 92 clips. Buscamos por nombre, excluyendo variantes que
+          // no queremos ("Trans" = transiciones, "Carry" = llevando a alguien).
+          const anims = demoGltf.animations;
+          const findClip = (include, exclude = []) => anims.find((c) => {
+            const n = c.name.toLowerCase();
+            return n.includes(include) && exclude.every((e) => !n.includes(e));
+          });
+
+          // Gesto amenazante de "caza" (cara abierta) -> SOLO al aparecer, una vez.
+          const scareClip = findClip('walkhuntft', ['trans', 'carry'])
+            || findClip('hunt_charge', ['trans'])
+            || anims[0];
+
+          // Locomoción en bucle durante la persecución. Usamos la corrida
+          // (QK_RunEndgame). Evitamos QK_WalkFT (en este rig levanta los brazos,
+          // parecía un salto) y QK_WalkHuntFT (reservada a la aparición).
+          const walkClip = findClip('runendgame')
+            || findClip('walkft', ['trans', 'carry', 'hunt', '2fall'])
+            || anims[0];
+          console.log('[DEMOGORGON] Aparición:', scareClip?.name, '| Movimiento:', walkClip?.name);
+
+          demogorgonScareAction = demogorgonMixer.clipAction(scareClip);
+          demogorgonScareAction.setLoop(THREE.LoopOnce, 1);
+          demogorgonScareAction.clampWhenFinished = true; // mantiene la pose final
+
+          demogorgonWalkAction = demogorgonMixer.clipAction(walkClip);
+          demogorgonWalkAction.setLoop(THREE.LoopRepeat, Infinity);
+
+          // Al terminar el gesto de aparición, encadenar suavemente a la locomoción.
+          demogorgonMixer.addEventListener('finished', (e) => {
+            if (e.action === demogorgonScareAction && isFlickeringActive) {
+              demogorgonScareAction.fadeOut(0.3);
+              demogorgonWalkAction.reset().fadeIn(0.3).play();
+            }
+          });
         }
 
         // Crear cuerpo físico en Cannon.js para el Demogorgon
@@ -595,7 +661,7 @@ export function loadRoomScene2(scene, physicsWorld, player, sceneManager) {
         physicsWorld.world.addBody(demogorgonBody);
         console.log('[DEMOGORGON] Physics body created. demogorgonModel:', !!demogorgonModel, 'demogorgonBody:', !!demogorgonBody);
 
-      }, undefined, (err) => console.error("[DEMOGORGON] Error loading demogorgon:", err));
+      }).catch((err) => console.error("[DEMOGORGON] Error loading demogorgon:", err));
 
       applyUpsideDownState();
 
@@ -667,53 +733,47 @@ export function updateScene2(time, player, dt) {
     }
 
     if (demogorgonModel && demogorgonBody && player && player.camera && dt) {
-      //  Chase logic – movimiento mediante posición KINEMÁTICA (solo XZ) con límite mínimo
-      // Asegurarnos de que el cuerpo está en modo KINEMATIC (sin gravedad)
+      // Persecución mediante posición KINEMÁTICA (sin gravedad, solo XZ)
       if (demogorgonBody.type !== CANNON.Body.KINEMATIC) {
         demogorgonBody.type = CANNON.Body.KINEMATIC;
         demogorgonBody.updateMassProperties();
         demogorgonBody.wakeUp();
       }
 
-      // Mantener colisión solo con el suelo (grupo 1) para evitar atascos en paredes
+      // Colisión solo con el suelo (grupo 1) para evitar atascos en paredes
       demogorgonBody.collisionFilterMask = 1;
 
-      // Vector dirección XZ y distancia actual
       const deltaX = player.camera.position.x - demogorgonBody.position.x;
       const deltaZ = player.camera.position.z - demogorgonBody.position.z;
       const distanceXZ = Math.sqrt(deltaX * deltaX + deltaZ * deltaZ);
-      const minDist = 2.0; // metros, distancia mínima permitida
-
-      // Calcular altura del suelo en base a la cámara del jugador
+      const minDist = 2.2; // distancia mínima: no se mete dentro del jugador
       const floorY = player.camera.position.y - 1.5;
 
-      // Limitar distancia máxima de persecución para evitar que se aleje demasiado
-      const maxDist = 30.0; // metros
-
-      if (distanceXZ > minDist && distanceXZ < maxDist) {
-        const dirVec = new THREE.Vector3(deltaX, 0, deltaZ).normalize();
-        const chaseSpeed = 4.0; // metros por segundo
-        // Movimiento basado en dt (delta time)
-        demogorgonBody.position.x += dirVec.x * chaseSpeed * dt;
-        demogorgonBody.position.z += dirVec.z * chaseSpeed * dt;
+      if (distanceXZ > minDist) {
+        // Velocidad dinámica: acelera cuanto más lejos está para no quedarse atrás
+        // respecto al jugador (~8 m/s). Persigue SIEMPRE (sin distancia máxima que lo
+        // haga "rendirse"), pero con tope para que no se teletransporte.
+        const chaseSpeed = THREE.MathUtils.clamp(distanceXZ * 1.1, 5.0, 9.0);
+        const inv = 1 / distanceXZ;
+        demogorgonBody.position.x += deltaX * inv * chaseSpeed * dt;
+        demogorgonBody.position.z += deltaZ * inv * chaseSpeed * dt;
       }
-      // Fijar altura constante (sobre el suelo)
+      // Altura constante sobre el suelo
       demogorgonBody.position.y = floorY + 0.6;
 
-      // Sincronizar modelo visual con cuerpo
+      // Sincronizar modelo visual con el cuerpo
       demogorgonModel.position.set(
         demogorgonBody.position.x,
         demogorgonBody.position.y - 0.6,
         demogorgonBody.position.z
       );
 
-      // Hacer que el modelo mire al jugador (solo rotación Y)
-      const lookAtPos = new THREE.Vector3(
-        player.camera.position.x,
-        demogorgonModel.position.y,
-        player.camera.position.z
-      );
-      demogorgonModel.lookAt(lookAtPos);
+      // Girar suavemente hacia el jugador (giro amenazante, no un snap instantáneo)
+      _demoLookTarget.set(player.camera.position.x, demogorgonModel.position.y, player.camera.position.z);
+      _demoMat.lookAt(demogorgonModel.position, _demoLookTarget, demogorgonModel.up);
+      _demoQuat.setFromRotationMatrix(_demoMat);
+      _demoQuat.multiply(_demoYawFlip); // corregir el frente del modelo (mismo flip que en spawn)
+      demogorgonModel.quaternion.slerp(_demoQuat, Math.min(1, dt * 6));
     }
   }
 
@@ -825,40 +885,10 @@ export function toggleDemogorgon(player) {
   isFlickeringActive = !isFlickeringActive;
   console.log('[DEMOGORGON] isFlickeringActive:', isFlickeringActive);
 
-  if (demogorgonModel) {
-    demogorgonModel.visible = isFlickeringActive;
-  }
   if (flashAmbient) {
     flashAmbient.intensity = isFlickeringActive ? 0.5 : 0.0;
   }
 
-  if (demogorgonBody) {
-    if (isFlickeringActive) {
-      const direction = new THREE.Vector3(0, 0, -1);
-      direction.applyQuaternion(player.camera.quaternion);
-      direction.y = 0;
-      if (direction.lengthSq() > 0) direction.normalize();
-
-      const spawnX = player.camera.position.x + direction.x * 2.5;
-      const spawnZ = player.camera.position.z + direction.z * 2.5;
-      const floorY = player.camera.position.y - 1.5;
-
-      demogorgonBody.type = CANNON.Body.DYNAMIC;
-      demogorgonBody.collisionFilterGroup = 1;
-      demogorgonBody.collisionFilterMask = -1;
-      demogorgonBody.position.set(spawnX, floorY + 0.6, spawnZ);
-      demogorgonBody.velocity.set(0, 0, 0);
-      demogorgonBody.updateMassProperties();
-      demogorgonBody.wakeUp();
-    } else {
-      demogorgonBody.type = CANNON.Body.KINEMATIC;
-      demogorgonBody.collisionFilterGroup = 0;
-      demogorgonBody.collisionFilterMask = 0;
-      demogorgonBody.velocity.set(0, 0, 0);
-      demogorgonBody.sleep();
-      if (demogorgonModel) {
-        demogorgonModel.visible = false;
-      }
-    }
-  }
+  if (isFlickeringActive) spawnDemogorgon(player);
+  else hideDemogorgon();
 }

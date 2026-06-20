@@ -12,6 +12,15 @@ import { eventBus } from '../utils/eventBus.js';
 import { getRenderer } from './Renderer.js';
 import { assetCache } from '../utils/AssetCache.js';
 
+// Assets pesados por escena. Se usa para liberar VRAM/RAM de la escena que
+// abandonamos (sin tocar los que la escena destino también necesita).
+const SCENE_HEAVY_ASSETS = {
+    scene1: ['/models/stranger_things_room/scene.gltf'],
+    scene2: ['/models/Velez_Paiz.glb', '/models/demogorgon.glb', '/models/root.glb'],
+    scene3: ['/models/Tunel/tunelST.glb'],
+    scene4: ['/models/Escuela.glb', '/models/root.glb'],
+};
+
 class SceneManager {
     constructor() {
         this.currentScene = new THREE.Scene();
@@ -20,6 +29,49 @@ class SceneManager {
         this.previousSceneId = null;
         this.isTransitioning = false;
         this.isUpsideDownActive = false; // Global state for Upside Down
+        this._preloadTimer = null;
+
+        // Precarga predictiva: cuando una escena queda lista, calentamos en segundo
+        // plano el cache de la PRÓXIMA escena probable para que su transición sea
+        // instantánea (sin espera con pantalla negra). Se retrasa un poco para no
+        // competir con la carga/fundido de la escena que acaba de entrar.
+        eventBus.on('sceneReady', () => {
+            if (this._preloadTimer) clearTimeout(this._preloadTimer);
+            this._preloadTimer = setTimeout(() => this.preloadNextScene(), 1200);
+        });
+    }
+
+    /**
+     * Devuelve las URLs de assets de la próxima escena probable según el flujo del
+     * juego (sala -> túnel -> hospital -> túnel -> escuela). El túnel es el "hub":
+     * su destino depende de la escena de la que venías.
+     * @returns {string[]|null}
+     */
+    getPredictedNextAssets() {
+        switch (this.activeSceneId) {
+            case 'scene1': return SCENE_HEAVY_ASSETS.scene3; // sala -> túnel
+            case 'scene2': return SCENE_HEAVY_ASSETS.scene3; // hospital -> túnel
+            case 'scene3': // túnel -> destino según de dónde se venía
+                return this.previousSceneId === 'scene2'
+                    ? SCENE_HEAVY_ASSETS.scene4   // venías del hospital -> escuela
+                    : SCENE_HEAVY_ASSETS.scene2;  // venías de la sala -> hospital
+            default: return null;
+        }
+    }
+
+    /**
+     * Calienta el cache (en segundo plano) con los assets de la próxima escena.
+     * No usa loadingManager para no afectar la barra de carga, y usa clone:false
+     * para solo poblar el cache sin clonar (el clon real se hace al entrar).
+     */
+    preloadNextScene() {
+        const urls = this.getPredictedNextAssets();
+        if (!urls) return;
+        for (const url of urls) {
+            assetCache.loadGLTF(url, undefined, { clone: false })
+                .then(() => console.log(`[SceneManager] Precargado (próxima escena): ${url}`))
+                .catch((e) => console.warn(`[SceneManager] Falló precarga de ${url}`, e));
+        }
     }
 
     initScene(physicsWorld, player) {
@@ -98,6 +150,18 @@ class SceneManager {
             }
         }
 
+        // Liberar VRAM/RAM de los assets pesados de la escena anterior que la
+        // nueva escena NO necesita. Los hijos ya se quitaron del grafo, así que
+        // ningún clon sigue usando estos buffers de GPU.
+        const prevAssets = SCENE_HEAVY_ASSETS[this.previousSceneId] || [];
+        const keepAssets = new Set(SCENE_HEAVY_ASSETS[this.activeSceneId] || []);
+        for (const url of prevAssets) {
+            if (!keepAssets.has(url)) {
+                const freed = assetCache.unload(url);
+                if (freed) console.log(`[SceneManager] VRAM liberada: ${url}`);
+            }
+        }
+
         if (this.activeSceneId === 'scene1') {
             loadScene1(this.currentScene, physicsWorld, player, this);
         } else if (this.activeSceneId === 'scene2') {
@@ -160,36 +224,21 @@ class SceneManager {
     }
 
     /**
-     * Precarga TODOS los assets pesados de todas las escenas al inicio,
-     * usando el loadingManager para que la barra de carga refleje el progreso total.
+     * Precarga SOLO los assets de la escena inicial (Scene1).
+     *
+     * Antes se precargaban las 4 escenas de golpe (~242MB de GLB sin comprimir),
+     * lo que disparaba la memoria y provocaba la pérdida de contexto WebGL (crash)
+     * en móvil al entrar al hospital. Ahora cada escena carga sus assets bajo
+     * demanda durante su transición (sus funciones de carga ya usan assetCache),
+     * y SceneManager libera los de la escena anterior al cambiar (ver switchScene).
+     *
      * @param {THREE.LoadingManager} loadingManager - Manejador de carga de la UI.
      * @returns {Promise<void>}
      */
-    async preloadAllAssets(loadingManager) {
-        const preloadTasks = [];
-
-        console.log(`[SceneManager] Iniciando precarga masiva de assets...`);
-
-        // Scene 1
-        preloadTasks.push(assetCache.loadGLTF('/models/stranger_things_room/scene.gltf', loadingManager));
-        
-        // Scene 2
-        preloadTasks.push(assetCache.loadGLTF('/models/Velez_Paiz.glb', loadingManager));
-        preloadTasks.push(assetCache.loadGLTF('/models/demogorgon.glb', loadingManager));
-        preloadTasks.push(assetCache.loadGLTF('/models/root.glb', loadingManager));
-
-        // Scene 3
-        preloadTasks.push(assetCache.loadGLTF('/models/Tunel/tunelST.glb', loadingManager));
-        preloadTasks.push(new Promise((resolve) => {
-            const loader = new THREE.TextureLoader(loadingManager);
-            loader.load('/models/Tunel/texture/text_tunel.jpeg', resolve, undefined, resolve);
-        }));
-
-        // Scene 4
-        preloadTasks.push(assetCache.loadGLTF('/models/Escuela.glb', loadingManager));
-
-        await Promise.all(preloadTasks);
-        console.log(`[SceneManager] Precarga masiva completada.`);
+    async preloadInitialAssets(loadingManager) {
+        console.log(`[SceneManager] Precargando assets de la escena inicial...`);
+        await assetCache.loadGLTF('/models/stranger_things_room/scene.gltf', loadingManager);
+        console.log(`[SceneManager] Precarga inicial completada.`);
     }
 }
 

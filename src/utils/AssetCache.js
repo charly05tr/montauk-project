@@ -1,10 +1,29 @@
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
+
+// DRACOLoader compartido para decodificar los modelos comprimidos con Draco
+// (hospital y raíces). El decoder vive en /public/draco/ (servido en /draco/).
+let _dracoLoader = null;
+function getDracoLoader() {
+    if (!_dracoLoader) {
+        _dracoLoader = new DRACOLoader();
+        _dracoLoader.setDecoderPath('/draco/');
+    }
+    return _dracoLoader;
+}
 
 class AssetCache {
     constructor() {
         this.cache = new Map();
         this.loadingPromises = new Map();
+    }
+
+    /** Crea un GLTFLoader con soporte Draco habilitado. */
+    createLoader(loadingManager) {
+        const loader = loadingManager ? new GLTFLoader(loadingManager) : new GLTFLoader();
+        loader.setDRACOLoader(getDracoLoader());
+        return loader;
     }
 
     cloneGLTF(gltf) {
@@ -46,7 +65,7 @@ class AssetCache {
         }
 
         const promise = new Promise((resolve, reject) => {
-            const loader = loadingManager ? new GLTFLoader(loadingManager) : new GLTFLoader();
+            const loader = this.createLoader(loadingManager);
             loader.load(
                 url,
                 (gltf) => {

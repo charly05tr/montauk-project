@@ -593,7 +593,12 @@ export function loadRoom(scene, physicsWorld, player, sceneManager) {
   window.addEventListener('pointerup', onBulbPointerUp);
 
 
-  // La música de fondo ('room_ambient') ya se inicia desde la Landing Page al presionar "Enter Facility"
+  // Solo auto-reproducir la música cuando el juego está activo.
+  // Así evitamos que vuelva a sonar al regresar a la landing con "Exit Facility",
+  // pero sí se reactiva cada vez que Scene 1 se carga dentro del gameplay.
+  if (isGameActive()) {
+    soundManager.playAmbient('room_ambient', '/sounds/scene2.mp3', true, 0.4);
+  }
 
   // Luces Base (La posición se ajustará matemáticamente después de cargar la sala)
   redLight = new THREE.PointLight(0xff2a12, 0.05, 20, 2)
